@@ -8,7 +8,7 @@ import { StepLayout } from "./components/StepLayout"
 import { loadRuntimeConfig } from "./config/runtime"
 import { useCalculator } from "./hooks/useCalculator"
 import { formatCurrency } from "./lib/pricingEngine"
-import { submitLead } from "./lib/wpApi"
+import { submitCalculatorLead } from "./lib/wordpressApi"
 
 const totalSteps = 5
 
@@ -17,7 +17,6 @@ function App() {
   const calculatorConfig = runtime.config.calculatorConfig
   const { formState, estimate, setProjectType, setComplexity, setTimeline, toggleAddon, updateLead } = useCalculator(calculatorConfig)
   const [step, setStep] = useState(1)
-  const [startedAt] = useState(() => Date.now())
   const [submitting, setSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,17 +47,22 @@ function App() {
     setError(null)
     setSubmitting(true)
     try {
-      await submitLead(runtime, {
-        answers: formState,
-        estimate,
-        estimateRange: formatCurrency(estimate.total),
-        submittedAt: Date.now(),
-        startedAt,
+      const estimateMin = Math.max(0, Math.round(estimate.total * 0.9))
+      const estimateMax = Math.round(estimate.total * 1.1)
+
+      await submitCalculatorLead(runtime, {
+        formState,
+        estimateMin,
+        estimateMax,
       })
       setIsSubmitted(true)
       setStep(5)
-    } catch {
-      setError("We could not submit your request right now. Please try again.")
+    } catch (submissionError) {
+      setError(
+        submissionError instanceof Error
+          ? submissionError.message
+          : "Something went wrong. Please retry.",
+      )
     } finally {
       setSubmitting(false)
     }
@@ -211,13 +215,30 @@ function App() {
               }
             >
               <LeadCaptureForm lead={formState.lead} onChange={updateLead} />
+              {isSubmitted ? (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                  Thanks! Your request is submitted successfully. Here is your estimate range:
+                </div>
+              ) : null}
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
                 <p className="font-semibold text-slate-900">Estimated range: {formatCurrency(estimate.total)}</p>
                 <p className="mt-1">
                   This is a directional price based on your current selections. Final proposal details come after review.
                 </p>
               </div>
-              {error ? <p className="text-sm font-medium text-red-600">{error}</p> : null}
+              {error ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                  <p className="text-sm font-medium text-red-700">{error}</p>
+                  <button
+                    type="button"
+                    onClick={handleSubmitLead}
+                    disabled={submitting}
+                    className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-red-300"
+                  >
+                    {submitting ? "Retrying..." : "Retry submission"}
+                  </button>
+                </div>
+              ) : null}
               <ExplanationBox text={calculatorConfig.ui.step5Explanation} />
             </StepLayout>
           ) : null}

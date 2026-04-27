@@ -28,6 +28,9 @@ final class Pixact_Cost_Calculator_Plugin {
 		add_action('rest_api_init', array($this, 'register_rest_routes'));
 		add_action('admin_menu', array($this, 'register_admin_menu'));
 		add_action('admin_init', array($this, 'register_settings'));
+		add_filter('manage_' . self::CPT . '_posts_columns', array($this, 'set_lead_columns'));
+		add_action('manage_' . self::CPT . '_posts_custom_column', array($this, 'render_lead_columns'), 10, 2);
+		add_action('add_meta_boxes', array($this, 'register_lead_meta_box'));
 	}
 
 	public function register_cpt() {
@@ -359,12 +362,18 @@ final class Pixact_Cost_Calculator_Plugin {
 		$answers = isset($params['answers']) && is_array($params['answers']) ? $params['answers'] : array();
 		$lead = isset($answers['lead']) && is_array($answers['lead']) ? $answers['lead'] : array();
 
-		$name = sanitize_text_field($lead['fullName'] ?? '');
-		$email = sanitize_email($lead['email'] ?? '');
-		$phone = sanitize_text_field($lead['phone'] ?? '');
-		$project_type = sanitize_text_field($answers['projectType'] ?? '');
-		$timeline = sanitize_text_field($answers['timeline'] ?? '');
+		$name = sanitize_text_field($params['name'] ?? ($lead['fullName'] ?? ''));
+		$email = sanitize_email($params['email'] ?? ($lead['email'] ?? ''));
+		$phone = sanitize_text_field($params['phone'] ?? ($lead['phone'] ?? ''));
+		$project_type = sanitize_text_field($params['project_type'] ?? ($answers['projectType'] ?? ''));
+		$timeline = sanitize_text_field($params['timeline'] ?? ($answers['timeline'] ?? ''));
+		$complexity = sanitize_text_field($params['complexity'] ?? ($answers['complexity'] ?? ''));
+		$estimate_min = isset($params['estimate_min']) ? (float) $params['estimate_min'] : 0;
+		$estimate_max = isset($params['estimate_max']) ? (float) $params['estimate_max'] : 0;
 		$estimate_range = sanitize_text_field($params['estimateRange'] ?? '');
+		if (empty($estimate_range) && $estimate_min > 0 && $estimate_max > 0) {
+			$estimate_range = '$' . number_format_i18n($estimate_min, 0) . ' - $' . number_format_i18n($estimate_max, 0);
+		}
 		$honeypot = sanitize_text_field($lead['honeypot'] ?? '');
 
 		$started_at = absint($params['startedAt'] ?? 0);
@@ -374,13 +383,15 @@ final class Pixact_Cost_Calculator_Plugin {
 			return new WP_REST_Response(array('message' => 'Spam rejected'), 400);
 		}
 
-		if ($started_at <= 0 || $submitted_at <= 0 || $submitted_at <= $started_at) {
-			return new WP_REST_Response(array('message' => 'Invalid timing payload'), 400);
-		}
+		if ($started_at > 0 && $submitted_at > 0) {
+			if ($submitted_at <= $started_at) {
+				return new WP_REST_Response(array('message' => 'Invalid timing payload'), 400);
+			}
 
-		$elapsed_seconds = (int) floor(($submitted_at - $started_at) / 1000);
-		if ($elapsed_seconds < self::MIN_SECONDS_TO_SUBMIT) {
-			return new WP_REST_Response(array('message' => 'Submission too fast'), 400);
+			$elapsed_seconds = (int) floor(($submitted_at - $started_at) / 1000);
+			if ($elapsed_seconds < self::MIN_SECONDS_TO_SUBMIT) {
+				return new WP_REST_Response(array('message' => 'Submission too fast'), 400);
+			}
 		}
 
 		if (empty($name) || empty($email) || empty($project_type) || empty($timeline)) {
@@ -410,6 +421,7 @@ final class Pixact_Cost_Calculator_Plugin {
 		update_post_meta($post_id, 'project_type', $project_type);
 		update_post_meta($post_id, 'estimate_range', $estimate_range);
 		update_post_meta($post_id, 'timeline', $timeline);
+		update_post_meta($post_id, 'complexity', $complexity);
 		update_post_meta($post_id, 'answers_json', wp_json_encode($answers));
 
 		$this->send_lead_email(
@@ -442,6 +454,117 @@ final class Pixact_Cost_Calculator_Plugin {
 		);
 
 		wp_mail($to, $subject, implode("\n", $lines));
+	}
+
+	public function set_lead_columns($columns) {
+		$custom_columns = array(
+			'cb'            => $columns['cb'] ?? '',
+			'title'         => 'Lead',
+			'lead_name'     => 'Name',
+			'lead_email'    => 'Email',
+			'lead_phone'    => 'Phone',
+			'project_type'  => 'Project',
+			'estimate_range'=> 'Estimate',
+			'timeline'      => 'Timeline',
+			'date'          => $columns['date'] ?? 'Date',
+		);
+
+		return $custom_columns;
+	}
+
+	public function render_lead_columns($column, $post_id) {
+		$name = get_post_meta($post_id, 'name', true);
+		$email = get_post_meta($post_id, 'email', true);
+		$phone = get_post_meta($post_id, 'phone', true);
+		$project_type = get_post_meta($post_id, 'project_type', true);
+		$estimate_range = get_post_meta($post_id, 'estimate_range', true);
+		$timeline = get_post_meta($post_id, 'timeline', true);
+
+		switch ($column) {
+			case 'lead_name':
+				echo esc_html($name ? $name : '—');
+				break;
+			case 'lead_email':
+				if (!empty($email)) {
+					echo '<a href="mailto:' . esc_attr($email) . '">' . esc_html($email) . '</a>';
+				} else {
+					echo '—';
+				}
+				break;
+			case 'lead_phone':
+				echo esc_html($phone ? $phone : '—');
+				break;
+			case 'project_type':
+				echo esc_html($project_type ? ucfirst($project_type) : '—');
+				break;
+			case 'estimate_range':
+				echo esc_html($estimate_range ? $estimate_range : '—');
+				break;
+			case 'timeline':
+				echo esc_html($timeline ? ucfirst($timeline) : '—');
+				break;
+		}
+	}
+
+	public function register_lead_meta_box() {
+		add_meta_box(
+			'pixact_lead_details',
+			'Lead Details',
+			array($this, 'render_lead_meta_box'),
+			self::CPT,
+			'normal',
+			'high'
+		);
+	}
+
+	public function render_lead_meta_box($post) {
+		$name = get_post_meta($post->ID, 'name', true);
+		$email = get_post_meta($post->ID, 'email', true);
+		$phone = get_post_meta($post->ID, 'phone', true);
+		$project_type = get_post_meta($post->ID, 'project_type', true);
+		$estimate_range = get_post_meta($post->ID, 'estimate_range', true);
+		$timeline = get_post_meta($post->ID, 'timeline', true);
+		$answers_json = get_post_meta($post->ID, 'answers_json', true);
+		$decoded_answers = json_decode($answers_json, true);
+		$pretty_json = wp_json_encode($decoded_answers ? $decoded_answers : array(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+		?>
+		<table class="form-table" role="presentation">
+			<tbody>
+				<tr>
+					<th scope="row">Name</th>
+					<td><?php echo esc_html($name ? $name : '—'); ?></td>
+				</tr>
+				<tr>
+					<th scope="row">Email</th>
+					<td>
+						<?php if (!empty($email)) : ?>
+							<a href="mailto:<?php echo esc_attr($email); ?>"><?php echo esc_html($email); ?></a>
+						<?php else : ?>
+							—
+						<?php endif; ?>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row">Phone</th>
+					<td><?php echo esc_html($phone ? $phone : '—'); ?></td>
+				</tr>
+				<tr>
+					<th scope="row">Project Type</th>
+					<td><?php echo esc_html($project_type ? ucfirst($project_type) : '—'); ?></td>
+				</tr>
+				<tr>
+					<th scope="row">Estimate Range</th>
+					<td><?php echo esc_html($estimate_range ? $estimate_range : '—'); ?></td>
+				</tr>
+				<tr>
+					<th scope="row">Timeline</th>
+					<td><?php echo esc_html($timeline ? ucfirst($timeline) : '—'); ?></td>
+				</tr>
+			</tbody>
+		</table>
+		<h3>Full Answers JSON</h3>
+		<textarea readonly style="width:100%;min-height:320px;font-family:monospace;"><?php echo esc_textarea($pretty_json ? $pretty_json : '{}'); ?></textarea>
+		<?php
 	}
 }
 
