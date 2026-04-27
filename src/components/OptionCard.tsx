@@ -15,7 +15,7 @@ export const OptionCard = ({ label, description, icon, badge, selected, onClick 
       type="button"
       onClick={onClick}
       aria-pressed={selected}
-      className={`w-full rounded-2xl border p-4 text-left transition-all duration-200 focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:outline-none ${
+      className={`w-full rounded-2xl border p-5 text-left transition-all duration-200 focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:outline-none ${
         selected
           ? "border-red-500 bg-red-50/90 shadow-lg shadow-red-100/60"
           : "border-slate-200 bg-white/80 hover:border-red-300 hover:bg-white hover:shadow-md"
@@ -30,7 +30,7 @@ export const OptionCard = ({ label, description, icon, badge, selected, onClick 
           ) : null}
           <div>
             <p className="text-base font-semibold text-slate-900">{label}</p>
-            <p className="mt-2 text-sm text-slate-600">{description}</p>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">{description}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

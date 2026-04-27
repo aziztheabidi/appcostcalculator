@@ -55,27 +55,46 @@ function App() {
   const runtime = useMemo(() => loadRuntimeConfig(), [])
   const calculatorConfig = runtime.config.calculatorConfig
   const { formState, estimate, setProjectType, setComplexity, setTimeline, toggleAddon, updateLead } = useCalculator(calculatorConfig)
-  const [step, setStep] = useState(1)
+  const [renderedStep, setRenderedStep] = useState(1)
+  const [transitionStage, setTransitionStage] = useState<"idle" | "exiting" | "entering">("idle")
+  const [transitionDirection, setTransitionDirection] = useState<1 | -1>(1)
   const [submitting, setSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; phone?: string }>({})
 
   const canContinue = (
-    (step === 1 && Boolean(formState.projectType)) ||
-    (step === 2 && Boolean(formState.complexity)) ||
-    (step === 3 && Boolean(formState.timeline)) ||
-    step === 4
+    (renderedStep === 1 && Boolean(formState.projectType)) ||
+    (renderedStep === 2 && Boolean(formState.complexity)) ||
+    (renderedStep === 3 && Boolean(formState.timeline)) ||
+    renderedStep === 4
   )
+  const isStepTransitioning = transitionStage !== "idle"
 
   const canSubmitLead = Boolean(formState.lead.fullName && formState.lead.email && !submitting && !isSubmitted)
 
   const nextStep = () => {
-    setStep((current) => Math.min(current + 1, totalSteps))
+    if (isStepTransitioning) return
+    if (renderedStep >= totalSteps) return
+    setTransitionDirection(1)
+    setTransitionStage("exiting")
+    window.setTimeout(() => {
+      setRenderedStep((current) => Math.min(current + 1, totalSteps))
+      setTransitionStage("entering")
+      window.setTimeout(() => setTransitionStage("idle"), 220)
+    }, 220)
   }
 
   const previousStep = () => {
-    setStep((current) => Math.max(current - 1, 1))
+    if (isStepTransitioning) return
+    if (renderedStep <= 1) return
+    setTransitionDirection(-1)
+    setTransitionStage("exiting")
+    window.setTimeout(() => {
+      setRenderedStep((current) => Math.max(current - 1, 1))
+      setTransitionStage("entering")
+      window.setTimeout(() => setTransitionStage("idle"), 220)
+    }, 220)
   }
 
   const handleSubmitLead = async () => {
@@ -111,7 +130,7 @@ function App() {
         estimateMax,
       })
       setIsSubmitted(true)
-      setStep(5)
+      setRenderedStep(5)
     } catch (submissionError) {
       setError(
         submissionError instanceof Error
@@ -124,8 +143,18 @@ function App() {
   }
 
   const modeLabel = runtime.mode === "wordpress" ? "WordPress mode" : "Mock mode"
-  const timelineLabel = formState.timeline ?? "Not selected"
-  const complexityLabel = formState.complexity ?? "Not selected"
+  const timelineLabel = formState.timeline ?? "standard"
+  const complexityLabel = formState.complexity ?? "basic"
+  const projectTypeLabel = formState.projectType ?? "website"
+  const mobileCtaLabel: "Continue" | "See Estimate" = renderedStep < 5 ? "Continue" : "See Estimate"
+  const mobileCtaDisabled = renderedStep < 5 ? (!canContinue || isStepTransitioning) : (submitting || isSubmitted)
+  const handleMobileCta = () => {
+    if (renderedStep < 5) {
+      nextStep()
+      return
+    }
+    handleSubmitLead()
+  }
 
   const renderSelectableCards = <T extends string,>(
     options: Array<{ value: T; label: string; description: string; badge?: string }>,
@@ -153,21 +182,30 @@ function App() {
 
   const leftConversation = (
     <>
-      <div className="rounded-3xl border border-white/60 bg-white/75 p-5 shadow-lg shadow-slate-200/60 backdrop-blur-md sm:p-7">
+      <div className="ds-card p-6 sm:p-8">
         <p className="inline-flex rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold tracking-wide text-red-700 uppercase">
           Conversational cost calculator
         </p>
-        <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+        <h1 className="ds-heading mt-4">
           Build your project estimate in minutes.
         </h1>
-        <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">
+        <p className="ds-body mt-2">
           Step-by-step cost calculator for app and web projects. Current mode: {modeLabel}.
         </p>
       </div>
 
-      <ProgressBar currentStep={step} totalSteps={totalSteps} />
+      <ProgressBar currentStep={renderedStep} totalSteps={totalSteps} />
 
-      {step === 1 ? (
+      <div
+        className={`step-transition ${
+          transitionStage === "exiting"
+            ? `step-exit-${transitionDirection === 1 ? "forward" : "back"}`
+            : transitionStage === "entering"
+              ? `step-enter-${transitionDirection === 1 ? "forward" : "back"}`
+              : ""
+        }`}
+      >
+      {renderedStep === 1 ? (
         <ConversationStep
           title={calculatorConfig.ui.step1Title}
           description={calculatorConfig.ui.step1Subtitle}
@@ -175,7 +213,7 @@ function App() {
           questionLabel="Choose project type"
           microcopy="Tip: pick the core product first; you can refine scope in the next steps."
           onNext={nextStep}
-          nextDisabled={!canContinue}
+          nextDisabled={!canContinue || isStepTransitioning}
         >
           {renderSelectableCards(
             calculatorConfig.projectOptions,
@@ -190,7 +228,7 @@ function App() {
         </ConversationStep>
       ) : null}
 
-      {step === 2 ? (
+      {renderedStep === 2 ? (
         <ConversationStep
           title={calculatorConfig.ui.step2Title}
           description={calculatorConfig.ui.step2Subtitle}
@@ -199,7 +237,7 @@ function App() {
           microcopy="Complexity has the strongest impact on development effort."
           onBack={previousStep}
           onNext={nextStep}
-          nextDisabled={!canContinue}
+          nextDisabled={!canContinue || isStepTransitioning}
         >
           {renderSelectableCards(
             calculatorConfig.complexityOptions,
@@ -210,7 +248,7 @@ function App() {
         </ConversationStep>
       ) : null}
 
-      {step === 3 ? (
+      {renderedStep === 3 ? (
         <ConversationStep
           title={calculatorConfig.ui.step3Title}
           description={calculatorConfig.ui.step3Subtitle}
@@ -219,7 +257,7 @@ function App() {
           microcopy="Faster delivery typically requires more parallel execution."
           onBack={previousStep}
           onNext={nextStep}
-          nextDisabled={!canContinue}
+          nextDisabled={!canContinue || isStepTransitioning}
         >
           {renderSelectableCards(
             calculatorConfig.timelineOptions,
@@ -230,7 +268,7 @@ function App() {
         </ConversationStep>
       ) : null}
 
-      {step === 4 ? (
+      {renderedStep === 4 ? (
         <ConversationStep
           title={calculatorConfig.ui.step4Title}
           description={calculatorConfig.ui.step4Subtitle}
@@ -239,13 +277,14 @@ function App() {
           microcopy="Optional add-ons help shape a more accurate estimate."
           onBack={previousStep}
           onNext={nextStep}
+          nextDisabled={isStepTransitioning}
           nextLabel="Continue"
         >
           {renderSelectableCards(calculatorConfig.addonOptions, formState.addons, toggleAddon, () => <AddonIcon />)}
         </ConversationStep>
       ) : null}
 
-      {step === 5 ? (
+      {renderedStep === 5 ? (
         <ConversationStep
           title={isSubmitted ? "Your estimate is ready" : calculatorConfig.ui.step5Title}
           description={calculatorConfig.ui.step5Subtitle}
@@ -254,7 +293,7 @@ function App() {
           onBack={previousStep}
           onNext={handleSubmitLead}
           nextLabel={isSubmitted ? "Submitted" : submitting ? "Submitting..." : "Get my estimate"}
-          nextDisabled={submitting || isSubmitted}
+          nextDisabled={submitting || isSubmitted || isStepTransitioning}
         >
           <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading form...</div>}>
             <LeadCaptureForm
@@ -284,6 +323,7 @@ function App() {
           ) : null}
         </ConversationStep>
       ) : null}
+      </div>
     </>
   )
 
@@ -293,6 +333,11 @@ function App() {
       estimate={estimate}
       timeline={timelineLabel}
       complexity={complexityLabel}
+      projectType={projectTypeLabel}
+      addonsCount={formState.addons.length}
+      mobileCtaLabel={mobileCtaLabel}
+      onMobileCtaClick={handleMobileCta}
+      mobileCtaDisabled={mobileCtaDisabled}
     />
   )
 }

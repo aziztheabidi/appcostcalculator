@@ -8,18 +8,46 @@ interface CalculatorLayoutProps {
   estimate: EstimateBreakdown
   timeline: string
   complexity: string
+  projectType: string
+  addonsCount: number
+  mobileCtaLabel: "Continue" | "See Estimate"
+  onMobileCtaClick: () => void
+  mobileCtaDisabled?: boolean
 }
 
-export const CalculatorLayout = ({ left, estimate, timeline, complexity }: CalculatorLayoutProps) => {
+export const CalculatorLayout = ({
+  left,
+  estimate,
+  timeline,
+  complexity,
+  projectType,
+  addonsCount,
+  mobileCtaLabel,
+  onMobileCtaClick,
+  mobileCtaDisabled = false,
+}: CalculatorLayoutProps) => {
   return (
     <main className="pixact-calculator">
-      <div className="pixact-calculator__surface mx-auto w-full rounded-3xl p-3 sm:p-5 lg:p-8">
+      <div className="pixact-calculator__surface mx-auto w-full rounded-3xl p-4 sm:p-6 lg:p-10">
         <div className="mx-auto grid w-full max-w-6xl gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="space-y-4 pb-20 lg:pb-0">{left}</section>
-          <StickyEstimatePanel estimate={estimate} timeline={timeline} complexity={complexity} />
+          <section className="space-y-4 pb-28 lg:pb-0">{left}</section>
+          <StickyEstimatePanel
+            estimate={estimate}
+            timeline={timeline}
+            complexity={complexity}
+            projectType={projectType}
+            addonsCount={addonsCount}
+          />
         </div>
       </div>
-      <MobileEstimateBar total={estimate.total} timeline={timeline} />
+      <MobileEstimateBar
+        estimate={estimate}
+        timeline={timeline}
+        complexity={complexity}
+        ctaLabel={mobileCtaLabel}
+        onCtaClick={onMobileCtaClick}
+        ctaDisabled={mobileCtaDisabled}
+      />
     </main>
   )
 }

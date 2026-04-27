@@ -2,6 +2,50 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 
+:root {
+  --pixact-primary: #d61414;
+  --pixact-primary-hover: #b91010;
+}
+
+@layer components {
+  .ds-surface {
+    @apply bg-slate-100;
+  }
+
+  .ds-card {
+    @apply rounded-3xl border border-white/60 bg-white/80 shadow-xl shadow-slate-200/60 backdrop-blur-md;
+  }
+
+  .ds-heading {
+    @apply text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl;
+  }
+
+  .ds-subheading {
+    @apply text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl;
+  }
+
+  .ds-body {
+    @apply text-sm leading-relaxed text-slate-700 sm:text-base;
+  }
+
+  .ds-muted {
+    @apply text-sm text-slate-500;
+  }
+
+  .ds-price {
+    @apply text-3xl font-extrabold tracking-tight text-slate-900 tabular-nums;
+  }
+
+  .ds-button-primary {
+    background-color: var(--pixact-primary);
+    @apply rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:outline-none disabled:cursor-not-allowed disabled:bg-red-300;
+  }
+
+  .ds-button-primary:hover {
+    background-color: var(--pixact-primary-hover);
+  }
+}
+
 /* Scope all custom styles to avoid WordPress theme bleed/conflicts. */
 .pixact-calculator {
   position: relative;
@@ -36,4 +80,44 @@
 
 .animate-fade-slide {
   animation: pixact-fade-slide 220ms ease-out;
+}
+
+.step-transition {
+  will-change: transform, opacity;
+}
+
+.step-exit-forward {
+  animation: step-exit-forward 220ms ease forwards;
+}
+
+.step-enter-forward {
+  animation: step-enter-forward 220ms ease forwards;
+}
+
+.step-exit-back {
+  animation: step-exit-back 220ms ease forwards;
+}
+
+.step-enter-back {
+  animation: step-enter-back 220ms ease forwards;
+}
+
+@keyframes step-exit-forward {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(-10px); }
+}
+
+@keyframes step-enter-forward {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes step-exit-back {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(10px); }
+}
+
+@keyframes step-enter-back {
+  from { opacity: 0; transform: translateX(-14px); }
+  to { opacity: 1; transform: translateX(0); }
 }

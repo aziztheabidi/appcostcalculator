@@ -8,7 +8,7 @@ interface LeadCaptureFormProps {
 }
 
 const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100"
 
 export const LeadCaptureForm = ({ lead, onChange, emailError, phoneError }: LeadCaptureFormProps) => {
   return (

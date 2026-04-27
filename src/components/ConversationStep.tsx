@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { HelpTooltip } from "./HelpTooltip"
+import { HelpAccordion } from "./HelpAccordion"
 
 interface ConversationStepProps {
   title: string
@@ -27,14 +27,14 @@ export const ConversationStep = ({
   microcopy,
 }: ConversationStepProps) => {
   return (
-    <section className="rounded-3xl border border-white/60 bg-white/70 p-5 shadow-xl shadow-slate-200/50 backdrop-blur-md sm:p-7">
+    <section className="ds-card p-6 sm:p-8">
       <div className="animate-fade-slide space-y-5">
         <header className="space-y-2">
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{title}</h2>
-          <p className="text-sm text-slate-600 sm:text-base">{description}</p>
+          <h2 className="ds-subheading">{title}</h2>
+          <p className="ds-body">{description}</p>
         </header>
 
-        <HelpTooltip text={helpText} />
+        <HelpAccordion text={helpText} />
 
         <div className="space-y-3">
           <p className="text-sm font-semibold text-slate-700">{questionLabel}</p>
@@ -55,7 +55,7 @@ export const ConversationStep = ({
             type="button"
             onClick={onNext}
             disabled={nextDisabled}
-            className="rounded-xl bg-[#D61414] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#b91010] focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:outline-none disabled:cursor-not-allowed disabled:bg-red-300"
+            className="ds-button-primary"
           >
             {nextLabel}
           </button>
