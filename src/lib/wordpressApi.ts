@@ -32,13 +32,11 @@ export const submitCalculatorLead = async (
     estimate_max: estimateMax,
     timeline: formState.timeline,
     complexity: formState.complexity,
+    started_at: formState.lead.startedAt,
     answers: formState,
   }
 
   if (runtime.mode === "mock") {
-    if (import.meta.env.DEV) {
-      console.warn("PixactCalculator config missing. Using simulated success mode.")
-    }
     await sleep(700)
     return { ok: true }
   }

@@ -1,0 +1,23 @@
+{
+  "src/components/LeadCaptureForm.tsx": {
+    "file": "assets/LeadCaptureForm.js",
+    "name": "LeadCaptureForm",
+    "src": "src/components/LeadCaptureForm.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.tsx"
+    ]
+  },
+  "src/main.tsx": {
+    "file": "assets/index.js",
+    "name": "main",
+    "src": "src/main.tsx",
+    "isEntry": true,
+    "dynamicImports": [
+      "src/components/LeadCaptureForm.tsx"
+    ],
+    "css": [
+      "assets/index.css"
+    ]
+  }
+}

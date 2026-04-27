@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Release artifact (regenerate with npm run package:wp or zip manually)
+pixact-cost-calculator.zip
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

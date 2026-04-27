@@ -11,21 +11,22 @@ import type {
 import { calculateEstimate } from "../lib/pricingEngine"
 import { useDebouncedValue } from "./useDebouncedValue"
 
-const defaultLead: LeadFormData = {
+const createDefaultLead = (): LeadFormData => ({
   fullName: "",
   email: "",
   phone: "",
   company: "",
   message: "",
   honeypot: "",
-}
+  startedAt: Date.now(),
+})
 
 const initialState: CalculatorFormState = {
   projectType: null,
   complexity: null,
   timeline: null,
   addons: [],
-  lead: defaultLead,
+  lead: createDefaultLead(),
 }
 
 export const useCalculator = (pricingConfig: CalculatorPricingConfig) => {

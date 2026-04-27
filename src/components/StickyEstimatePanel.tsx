@@ -39,16 +39,16 @@ export const StickyEstimatePanel = ({
   const timelineRange = getTimelineRange(timeline)
 
   return (
-    <aside className="ds-card sticky top-4 hidden p-6 lg:block">
+    <aside className="ds-card sticky top-[100px] hidden w-full max-w-[420px] min-w-0 justify-self-end overflow-hidden p-6 lg:block">
       <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Estimated cost range</p>
-      <p className="ds-price mt-2 transition-all duration-200">
+      <p className="ds-price mt-2 break-words transition-all duration-300">
         {formatCurrency(min)} - {formatCurrency(max)}
       </p>
 
-      <div className="mt-5 grid gap-3">
+      <div className="mt-5 grid gap-3 space-y-2">
         <div className="rounded-xl border border-slate-200 bg-white/90 p-3">
           <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">Timeline</p>
-          <p className="mt-1 text-base font-semibold text-slate-900 transition-all duration-200">{timelineRange}</p>
+          <p className="mt-1 text-base font-semibold text-slate-900 transition-all duration-300">{timelineRange}</p>
         </div>
         <div className="rounded-xl border border-red-200 bg-red-50/70 p-3">
           <p className="text-[11px] font-semibold tracking-wide text-red-600 uppercase">Complexity</p>
@@ -60,14 +60,16 @@ export const StickyEstimatePanel = ({
 
       <div className="mt-5 min-h-20 rounded-2xl border border-slate-200 bg-slate-50 p-3">
         <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Recommendation</p>
-        <div className="mt-2 min-h-10">
+        <div className="mt-2 min-h-10 space-y-2">
           {recommendationLoading ? (
             <div className="space-y-2">
               <div className="h-3 w-11/12 animate-pulse rounded bg-slate-200/80" aria-hidden="true" />
               <div className="h-3 w-8/12 animate-pulse rounded bg-slate-200/80" aria-hidden="true" />
             </div>
           ) : (
-            <p className="text-sm leading-relaxed text-slate-700 transition-opacity duration-200">{recommendationText}</p>
+            <p key={recommendationText} className="pixact-clamp-2 pixact-fade-in break-words text-sm leading-relaxed text-slate-700">
+              {recommendationText}
+            </p>
           )}
         </div>
       </div>
@@ -76,13 +78,19 @@ export const StickyEstimatePanel = ({
         <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Dynamic insights</p>
         <ul className="mt-2 space-y-2 text-sm leading-relaxed text-slate-700">
           {insights.map((insight) => (
-            <li key={insight} className="transition-all duration-200">- {insight}</li>
+            <li key={insight} className="flex items-start gap-2 break-words transition-all duration-300">
+              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" aria-hidden="true" />
+              <span>{insight}</span>
+            </li>
           ))}
         </ul>
       </div>
 
       <p className="mt-5 text-xs leading-relaxed text-slate-500">
         This is a guided estimate based on your inputs.
+      </p>
+      <p className="mt-2 text-xs leading-relaxed text-slate-500">
+        This estimate is based on your selections and can be optimized further.
       </p>
     </aside>
   )

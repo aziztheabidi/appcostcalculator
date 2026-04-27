@@ -1,67 +1,142 @@
-# Pixact Cost Calculator (WordPress Embed)
+# Pixact Cost Calculator
 
-React + TypeScript + Vite + Tailwind calculator designed for embedding in WordPress pages via shortcode.
+Production-ready React + WordPress calculator flow:
 
-## What this project includes
+`User -> React calculator -> WordPress REST -> lead stored + email sent`
 
-- Multi-step calculator flow
-- Branching logic for `App`, `Website`, and `SaaS`
-- Config-driven pricing engine
-- WordPress admin settings for editable questions and prices
-- Live estimate preview
-- Lead capture before final result
-- WordPress runtime config loader with safe mock fallback
+## Stack
 
-## Runtime Config Contract
+- React + TypeScript + Vite + Tailwind (UI only)
+- WordPress plugin (single backend)
+- No external backend services
 
-The calculator reads WordPress data from a global object:
+## Project Structure
 
-```js
-window.PixactCalculator = {
-  restUrl: "https://example.com/wp-json",
-  nonce: "wp_rest_nonce",
-  siteUrl: "https://example.com"
-}
+```text
+pixact-cost-calculator/
+  pixact-cost-calculator.php
+  includes/
+    rest-api.php
+    post-type.php
+    email.php
+  assets/
+    calculator/
+      assets/
+        index.js
+        index.css
+        LeadCaptureForm.js
 ```
 
-If this object is missing or incomplete, the app automatically runs in mock mode.
-
-## WordPress Mount Target
-
-The app mounts to:
-
-- `#pixact-calculator-root` (preferred for shortcode embeds)
-- fallback: `#root` (local dev / standalone preview)
-
-Example shortcode output container:
-
-```html
-<div id="pixact-calculator-root"></div>
-```
-
-## Development
+## Run React Locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Production build
+The app mounts to `#root` in local mode and automatically uses mock submission mode when `window.PixactCalculator` is not present.
+
+## Build React
 
 ```bash
 npm run build
 ```
 
-Generated assets can be enqueued in WordPress and rendered where your shortcode outputs the mount element.
+This outputs:
 
-## WordPress Plugin Admin UX
+- `dist/assets/index.js`
+- `dist/assets/index.css`
+- `dist/assets/LeadCaptureForm.js`
 
-In WordPress admin, open `Pixact Calculator` to edit:
+## Move Build into WordPress Plugin
 
-- all step titles/subtitles/explanations
-- project type labels/descriptions/badges/base prices
-- complexity labels/descriptions/multipliers
-- timeline labels/descriptions/multipliers
-- add-on labels/descriptions/fixed prices
+Copy build artifacts into:
 
-These values are localized into `window.PixactCalculator.calculatorConfig` and used by the React app at runtime.
+- `wordpress-plugin/pixact-cost-calculator/assets/calculator/assets/index.js`
+- `wordpress-plugin/pixact-cost-calculator/assets/calculator/assets/index.css`
+- `wordpress-plugin/pixact-cost-calculator/assets/calculator/assets/LeadCaptureForm.js`
+
+## Install Plugin
+
+1. Copy `wordpress-plugin/pixact-cost-calculator` into `wp-content/plugins/`
+2. Activate **Pixact Cost Calculator** from WordPress admin
+3. Add shortcode on a page:
+
+```text
+[pixact_cost_calculator]
+```
+
+## Shortcode + Frontend Bootstrapping
+
+The shortcode renders:
+
+```html
+<div id="pixact-calculator-root"></div>
+```
+
+Assets load only when shortcode is present. WordPress localizes:
+
+```js
+window.PixactCalculator = {
+  restUrl: "https://example.com/wp-json/pixact/v1/",
+  nonce: "wp_rest_nonce",
+  siteUrl: "https://example.com/"
+}
+```
+
+## Lead API
+
+- Endpoint: `POST /wp-json/pixact/v1/lead`
+- Requires `X-WP-Nonce`
+- Validates required fields: `name`, `email`
+- Sanitizes all input
+- Anti-spam checks:
+  - honeypot field must be empty
+  - submission timing check
+
+## Lead Storage
+
+Leads are stored in custom post type:
+
+- `calculator_lead`
+
+Saved meta:
+
+- `name`
+- `email`
+- `phone`
+- `answers` (JSON string)
+- `estimate_min`
+- `estimate_max`
+- `timeline`
+- `complexity`
+
+## Email Notifications (SMTP-Compatible)
+
+On successful lead submission, plugin uses `wp_mail()` and sends:
+
+- name
+- email
+- phone
+- estimate range
+- timeline
+- complexity
+- full answers JSON
+
+Because it uses `wp_mail()`, WordPress SMTP plugins can handle delivery.
+
+## Security Notes
+
+- Nonce verification with `wp_verify_nonce`
+- Input sanitization (`sanitize_text_field`, `sanitize_email`)
+- No direct SQL queries
+- No exposed API keys
+
+## UI/UX Notes
+
+- Config-driven steps (no hardcoded step flow in components)
+- Conversational multi-step layout
+- Sticky estimate panel on desktop
+- Bottom estimate bar on mobile
+- Accessible form labels and keyboard-friendly controls
+- Scoped calculator styles to avoid WP theme conflicts

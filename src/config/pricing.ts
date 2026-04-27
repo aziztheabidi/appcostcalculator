@@ -22,5 +22,6 @@ export const addonPricing: Record<AddonId, number> = {
   designSystem: 2500,
   analytics: 1800,
   integrations: 3200,
+  ai_features: 4800,
   seo: 1500,
 }

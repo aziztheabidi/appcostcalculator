@@ -4,13 +4,13 @@ import { ConversationStep } from "./components/ConversationStep"
 import { OptionCard } from "./components/OptionCard"
 import { ProgressBar } from "./components/ProgressBar"
 import { loadRuntimeConfig } from "./config/runtime"
+import { useRemoteCalculatorState } from "./hooks/useRemoteCalculatorState"
 import { useCalculator } from "./hooks/useCalculator"
 import { fetchMicrocopy } from "./lib/aiMicrocopy"
 import { formatCurrency } from "./lib/pricingEngine"
 import { buildGuidanceInsights } from "./lib/recommendationEngine"
 import { submitCalculatorLead } from "./lib/wordpressApi"
 
-const totalSteps = 5
 const LeadCaptureForm = lazy(() =>
   import("./components/LeadCaptureForm").then((module) => ({ default: module.LeadCaptureForm })),
 )
@@ -53,9 +53,35 @@ const AddonIcon = () => (
   </svg>
 )
 
+const getOptionIcon = (iconKey?: string): ReactNode => {
+  if (iconKey === "app") return <AppTypeIcon />
+  if (iconKey === "website") return <WebsiteIcon />
+  if (iconKey === "saas") return <SaasIcon />
+  if (iconKey === "complexity") return <ComplexityIcon />
+  if (iconKey === "timeline") return <TimelineIcon />
+  if (iconKey === "addon") return <AddonIcon />
+  return undefined
+}
+
+const normalizeAiText = (text?: string): string => {
+  if (!text) return ""
+  const cleaned = text
+    .replace(/^[\s\-•*]+/g, "")
+    .replace(/\n+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+  if (!cleaned) return ""
+  const sentenceChunks = cleaned.match(/[^.!?]+[.!?]?/g)?.map((chunk) => chunk.trim()).filter(Boolean) ?? []
+  return sentenceChunks.slice(0, 2).join(" ")
+}
+
 function App() {
   const runtime = useMemo(() => loadRuntimeConfig(), [])
-  const calculatorConfig = runtime.config.calculatorConfig
+  const { calculatorConfig, remoteConfig } = useRemoteCalculatorState(runtime)
+  const [aiRecommendationsEnabled, setAiRecommendationsEnabled] = useState(
+    runtime.config.aiEnabled ?? true,
+  )
+  const totalSteps = calculatorConfig.steps.length
   const { formState, estimate, setProjectType, setComplexity, setTimeline, toggleAddon, updateLead } = useCalculator(calculatorConfig)
   const [renderedStep, setRenderedStep] = useState(1)
   const [transitionStage, setTransitionStage] = useState<"idle" | "exiting" | "entering">("idle")
@@ -67,12 +93,37 @@ function App() {
   const [aiMicrocopy, setAiMicrocopy] = useState<Record<string, { helper: string; explanation: string; recommendation: string }>>({})
   const [microcopyLoadingByStep, setMicrocopyLoadingByStep] = useState<Record<string, boolean>>({})
 
-  const canContinue = (
-    (renderedStep === 1 && Boolean(formState.projectType)) ||
-    (renderedStep === 2 && Boolean(formState.complexity)) ||
-    (renderedStep === 3 && Boolean(formState.timeline)) ||
-    renderedStep === 4
-  )
+  useEffect(() => {
+    if (remoteConfig) {
+      setAiRecommendationsEnabled(remoteConfig.aiRecommendationsEnabled ?? true)
+    }
+  }, [remoteConfig])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!window.PixactCalculator) return
+    window.PixactCalculator.aiEnabled = aiRecommendationsEnabled
+  }, [aiRecommendationsEnabled])
+
+  const currentStepConfig = calculatorConfig.steps[Math.max(0, renderedStep - 1)]
+  const selectionFieldByImpact: Record<string, "projectType" | "complexity" | "timeline" | "addons" | "lead"> = {
+    projectType: "projectType",
+    complexity: "complexity",
+    timeline: "timeline",
+    addons: "addons",
+    lead: "lead",
+  }
+  const selectedField = currentStepConfig
+    ? selectionFieldByImpact[currentStepConfig.pricingImpactKey] ?? null
+    : null
+  const canContinue = (() => {
+    if (!currentStepConfig) return false
+    if (selectedField === "projectType") return Boolean(formState.projectType)
+    if (selectedField === "complexity") return Boolean(formState.complexity)
+    if (selectedField === "timeline") return Boolean(formState.timeline)
+    if (selectedField === "addons" || selectedField === "lead") return true
+    return currentStepConfig.type !== "single"
+  })()
   const isStepTransitioning = transitionStage !== "idle"
 
   const canSubmitLead = Boolean(formState.lead.fullName && formState.lead.email && !submitting && !isSubmitted)
@@ -134,7 +185,7 @@ function App() {
         estimateMax,
       })
       setIsSubmitted(true)
-      setRenderedStep(5)
+      setRenderedStep(totalSteps)
     } catch (submissionError) {
       setError(
         submissionError instanceof Error
@@ -156,17 +207,20 @@ function App() {
     addonOptions: calculatorConfig.addonOptions,
     totalEstimate: estimate.total,
   })
-  const activeStepKey = `step${renderedStep}`
+  const activeStepKey = currentStepConfig?.id ?? calculatorConfig.steps[0]?.id ?? "platform"
   const activeAi = aiMicrocopy[activeStepKey]
   const activeMicrocopyLoading = Boolean(microcopyLoadingByStep[activeStepKey])
-  const activeRecommendation = activeAi?.recommendation ?? calculatorConfig.ui.resultRecommendation
+  const activeAiHelper = normalizeAiText(activeAi?.helper)
+  const activeAiExplanation = normalizeAiText(activeAi?.explanation)
+  const activeAiRecommendation = normalizeAiText(activeAi?.recommendation)
+  const activeRecommendation = activeAiRecommendation || calculatorConfig.ui.resultRecommendation
   const mergedInsights = activeAi?.recommendation
     ? [activeAi.recommendation, ...guidanceInsights].slice(0, 3)
     : guidanceInsights
-  const mobileCtaLabel: "Continue" | "See Estimate" = renderedStep < 5 ? "Continue" : "See Estimate"
-  const mobileCtaDisabled = renderedStep < 5 ? (!canContinue || isStepTransitioning) : (submitting || isSubmitted)
+  const mobileCtaLabel: "Continue" | "See Estimate" = renderedStep < totalSteps ? "Continue" : "See Estimate"
+  const mobileCtaDisabled = renderedStep < totalSteps ? (!canContinue || isStepTransitioning) : (submitting || isSubmitted)
   const handleMobileCta = () => {
-    if (renderedStep < 5) {
+    if (renderedStep < totalSteps) {
       nextStep()
       return
     }
@@ -174,13 +228,13 @@ function App() {
   }
 
   const meaningfulAnswers = useMemo(() => {
-    if (renderedStep === 1) {
+    if (selectedField === "projectType") {
       return { projectType: formState.projectType }
     }
-    if (renderedStep === 2) {
+    if (selectedField === "complexity") {
       return { projectType: formState.projectType, complexity: formState.complexity }
     }
-    if (renderedStep === 3) {
+    if (selectedField === "timeline") {
       return {
         projectType: formState.projectType,
         complexity: formState.complexity,
@@ -193,10 +247,11 @@ function App() {
       timeline: formState.timeline,
       addons: [...formState.addons].sort(),
     }
-  }, [renderedStep, formState.projectType, formState.complexity, formState.timeline, formState.addons])
+  }, [selectedField, formState.projectType, formState.complexity, formState.timeline, formState.addons])
 
   useEffect(() => {
-    const stepKey = `step${renderedStep}`
+    const stepKey = currentStepConfig?.id
+    if (!stepKey) return
     const timer = window.setTimeout(async () => {
       setMicrocopyLoadingByStep((prev) => ({ ...prev, [stepKey]: true }))
       const data = await fetchMicrocopy(stepKey, meaningfulAnswers, "app-web-cost-calculator")
@@ -214,7 +269,7 @@ function App() {
     }, 300)
 
     return () => window.clearTimeout(timer)
-  }, [renderedStep, meaningfulAnswers])
+  }, [currentStepConfig?.id, meaningfulAnswers])
 
   const renderSelectableCards = <T extends string,>(
     options: Array<{ value: T; label: string; description: string; badge?: string }>,
@@ -222,7 +277,7 @@ function App() {
     onToggle: (value: T) => void,
     iconResolver?: (value: T) => ReactNode,
   ) => (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       {options.map((option) => {
         const selected = selectedValues.includes(option.value)
         return (
@@ -240,9 +295,37 @@ function App() {
     </div>
   )
 
+  const getStepSelectedValues = (impactKey: string): string[] => {
+    const field = selectionFieldByImpact[impactKey]
+    if (field === "projectType") return formState.projectType ? [formState.projectType] : []
+    if (field === "complexity") return formState.complexity ? [formState.complexity] : []
+    if (field === "timeline") return formState.timeline ? [formState.timeline] : []
+    if (field === "addons") return formState.addons
+    return []
+  }
+
+  const handleStepOptionToggle = (impactKey: string, value: string) => {
+    const field = selectionFieldByImpact[impactKey]
+    if (field === "projectType") {
+      setProjectType(value as "app" | "website" | "saas")
+      return
+    }
+    if (field === "complexity") {
+      setComplexity(value as "basic" | "advanced" | "premium")
+      return
+    }
+    if (field === "timeline") {
+      setTimeline(value as "standard" | "accelerated" | "urgent")
+      return
+    }
+    if (field === "addons") {
+      toggleAddon(value as "designSystem" | "analytics" | "integrations" | "seo" | "ai_features")
+    }
+  }
+
   const leftConversation = (
     <>
-      <div className="ds-card p-6 sm:p-8">
+      <div className="ds-card space-y-2 p-6 sm:p-8">
         <p className="inline-flex rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold tracking-wide text-red-700 uppercase">
           Conversational cost calculator
         </p>
@@ -265,95 +348,33 @@ function App() {
               : ""
         }`}
       >
-      {renderedStep === 1 ? (
+      {currentStepConfig && currentStepConfig.type !== "input" ? (
         <ConversationStep
-          title={calculatorConfig.ui.step1Title}
-          description={calculatorConfig.ui.step1Subtitle}
-          helpText={activeAi?.explanation ?? calculatorConfig.ui.step1Explanation}
-          questionLabel="Choose project type"
-          microcopy={activeAi?.helper ?? calculatorConfig.ui.step1Microcopy}
+          title={currentStepConfig.title}
+          description={currentStepConfig.helper}
+          helpText={activeAiExplanation || currentStepConfig.explanation}
+          questionLabel={currentStepConfig.questionLabel}
+          microcopy={activeAiHelper || currentStepConfig.helper}
           microcopyLoading={activeMicrocopyLoading}
+          onBack={renderedStep > 1 ? previousStep : undefined}
           onNext={nextStep}
           nextDisabled={!canContinue || isStepTransitioning}
         >
           {renderSelectableCards(
-            calculatorConfig.projectOptions,
-            formState.projectType ? [formState.projectType] : [],
-            setProjectType,
-            (value) => {
-              if (value === "app") return <AppTypeIcon />
-              if (value === "website") return <WebsiteIcon />
-              return <SaasIcon />
-            },
+            currentStepConfig.options,
+            getStepSelectedValues(currentStepConfig.pricingImpactKey),
+            (value) => handleStepOptionToggle(currentStepConfig.pricingImpactKey, value),
+            (value) => getOptionIcon(currentStepConfig.options.find((option) => option.value === value)?.icon),
           )}
         </ConversationStep>
       ) : null}
 
-      {renderedStep === 2 ? (
+      {currentStepConfig?.type === "input" ? (
         <ConversationStep
-          title={calculatorConfig.ui.step2Title}
-          description={calculatorConfig.ui.step2Subtitle}
-          helpText={activeAi?.explanation ?? calculatorConfig.ui.step2Explanation}
-          questionLabel="Choose complexity level"
-          microcopy={activeAi?.helper ?? calculatorConfig.ui.step2Microcopy}
-          microcopyLoading={activeMicrocopyLoading}
-          onBack={previousStep}
-          onNext={nextStep}
-          nextDisabled={!canContinue || isStepTransitioning}
-        >
-          {renderSelectableCards(
-            calculatorConfig.complexityOptions,
-            formState.complexity ? [formState.complexity] : [],
-            setComplexity,
-            () => <ComplexityIcon />,
-          )}
-        </ConversationStep>
-      ) : null}
-
-      {renderedStep === 3 ? (
-        <ConversationStep
-          title={calculatorConfig.ui.step3Title}
-          description={calculatorConfig.ui.step3Subtitle}
-          helpText={activeAi?.explanation ?? calculatorConfig.ui.step3Explanation}
-          questionLabel="Choose delivery timeline"
-          microcopy={activeAi?.helper ?? calculatorConfig.ui.step3Microcopy}
-          microcopyLoading={activeMicrocopyLoading}
-          onBack={previousStep}
-          onNext={nextStep}
-          nextDisabled={!canContinue || isStepTransitioning}
-        >
-          {renderSelectableCards(
-            calculatorConfig.timelineOptions,
-            formState.timeline ? [formState.timeline] : [],
-            setTimeline,
-            () => <TimelineIcon />,
-          )}
-        </ConversationStep>
-      ) : null}
-
-      {renderedStep === 4 ? (
-        <ConversationStep
-          title={calculatorConfig.ui.step4Title}
-          description={calculatorConfig.ui.step4Subtitle}
-          helpText={activeAi?.explanation ?? calculatorConfig.ui.step4Explanation}
-          questionLabel="Choose add-ons"
-          microcopy={activeAi?.helper ?? calculatorConfig.ui.step4Microcopy}
-          microcopyLoading={activeMicrocopyLoading}
-          onBack={previousStep}
-          onNext={nextStep}
-          nextDisabled={isStepTransitioning}
-          nextLabel="Continue"
-        >
-          {renderSelectableCards(calculatorConfig.addonOptions, formState.addons, toggleAddon, () => <AddonIcon />)}
-        </ConversationStep>
-      ) : null}
-
-      {renderedStep === 5 ? (
-        <ConversationStep
-          title={isSubmitted ? "Your estimate is ready" : calculatorConfig.ui.step5Title}
-          description={calculatorConfig.ui.step5Subtitle}
-          helpText={activeAi?.explanation ?? calculatorConfig.ui.step5Explanation}
-          questionLabel="Share your contact details"
+          title={isSubmitted ? "Your estimate is ready" : currentStepConfig.title}
+          description={currentStepConfig.helper}
+          helpText={activeAiExplanation || currentStepConfig.explanation}
+          questionLabel={currentStepConfig.questionLabel}
           onBack={previousStep}
           onNext={handleSubmitLead}
           nextLabel={isSubmitted ? "Submitted" : submitting ? "Submitting..." : "Get my estimate"}
@@ -383,12 +404,18 @@ function App() {
                 <p className="font-semibold">Recommendation</p>
                 <p className="mt-1">{activeRecommendation}</p>
               </div>
-              <ul className="space-y-1 text-sm">
+              <ul className="space-y-2 text-sm">
                 {mergedInsights.map((insight) => (
-                  <li key={insight}>- {insight}</li>
+                  <li key={insight} className="flex items-start gap-2 break-words">
+                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500/80" aria-hidden="true" />
+                    <span>{insight}</span>
+                  </li>
                 ))}
               </ul>
               <p className="text-xs text-emerald-800/80">{calculatorConfig.ui.resultTrustLine}</p>
+              <p className="text-xs text-emerald-800/80">
+                We can help you refine this into a working product direction before you commit.
+              </p>
               <div className="grid gap-2 sm:grid-cols-3">
                 <button type="button" className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold">
                   {calculatorConfig.ui.ctaConsultation}

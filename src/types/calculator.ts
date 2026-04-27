@@ -4,7 +4,7 @@ export type Complexity = "basic" | "advanced" | "premium"
 
 export type Timeline = "standard" | "accelerated" | "urgent"
 
-export type AddonId = "designSystem" | "analytics" | "integrations" | "seo"
+export type AddonId = "designSystem" | "analytics" | "integrations" | "seo" | "ai_features"
 
 export interface LeadFormData {
   fullName: string
@@ -13,6 +13,7 @@ export interface LeadFormData {
   company: string
   message: string
   honeypot: string
+  startedAt: number
 }
 
 export interface CalculatorFormState {
@@ -55,26 +56,32 @@ export interface AddonOptionConfig extends OptionItem<AddonId> {
   price: number
 }
 
+export type CalculatorStepType = "single" | "multi" | "input"
+
+export type PriceModifierLevel = "none" | "low" | "medium" | "high"
+
+export interface CalculatorStepOption {
+  label: string
+  value: string
+  description: string
+  badge?: string
+  icon?: string
+  priceModifier: PriceModifierLevel
+  tags: string[]
+}
+
+export interface CalculatorStepConfig {
+  id: string
+  title: string
+  helper: string
+  explanation: string
+  questionLabel: string
+  type: CalculatorStepType
+  options: CalculatorStepOption[]
+  pricingImpactKey: string
+}
+
 export interface CalculatorUiConfig {
-  step1Title: string
-  step1Subtitle: string
-  step1Explanation: string
-  step1Microcopy: string
-  step2Title: string
-  step2Subtitle: string
-  step2Explanation: string
-  step2Microcopy: string
-  step3Title: string
-  step3Subtitle: string
-  step3Explanation: string
-  step3Microcopy: string
-  step4Title: string
-  step4Subtitle: string
-  step4Explanation: string
-  step4Microcopy: string
-  step5Title: string
-  step5Subtitle: string
-  step5Explanation: string
   leadFramingMessage: string
   resultRecommendation: string
   resultTrustLine: string
@@ -84,9 +91,57 @@ export interface CalculatorUiConfig {
 }
 
 export interface CalculatorPricingConfig {
+  steps: CalculatorStepConfig[]
   projectOptions: ProjectOptionConfig[]
   complexityOptions: ComplexityOptionConfig[]
   timelineOptions: TimelineOptionConfig[]
   addonOptions: AddonOptionConfig[]
   ui: CalculatorUiConfig
+}
+
+export interface PricingRules {
+  basePrices: {
+    app: number
+    website: number
+    saas: number
+  }
+  featureMultipliers: {
+    low: number
+    medium: number
+    high: number
+  }
+  multipliers: {
+    backendComplexity: number
+    userRoles: number
+    aiFeatures: number
+  }
+  timelineAdjustment: {
+    normal: number
+    fast: number
+    urgent: number
+  }
+  complexityThresholds: {
+    basic: number
+    medium: number
+    advanced: number
+    enterprise: number
+  }
+}
+
+export interface RemoteCalculatorConfig {
+  steps: Array<{
+    id: string
+    title?: string
+    helper?: string
+    explanation?: string
+    type?: "single" | "multi" | "input"
+    options?: Array<{
+      label: string
+      value: string
+      priceModifier?: PriceModifierLevel
+      tags?: string[]
+    }>
+  }>
+  advancedFeaturesStepEnabled?: boolean
+  aiRecommendationsEnabled?: boolean
 }

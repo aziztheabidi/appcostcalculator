@@ -30,9 +30,10 @@ export const CalculatorLayout = ({
 }: CalculatorLayoutProps) => {
   return (
     <main className="pixact-calculator">
-      <div className="pixact-calculator__surface mx-auto w-full rounded-3xl p-4 sm:p-6 lg:p-10">
-        <div className="mx-auto grid w-full max-w-6xl gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="space-y-4 pb-28 lg:pb-0">{left}</section>
+      <div className="pixact-calculator__surface w-full overflow-hidden">
+        <div className="mx-auto w-full max-w-[1200px] px-4 md:px-6 lg:px-8">
+          <div className="grid w-full grid-cols-1 gap-8 py-4 md:py-6 lg:grid-cols-[minmax(0,60%)_minmax(0,40%)] lg:py-8">
+          <section className="min-w-0 space-y-6 break-words pb-28 lg:pb-0">{left}</section>
           <StickyEstimatePanel
             estimate={estimate}
             timeline={timeline}
@@ -41,12 +42,15 @@ export const CalculatorLayout = ({
             recommendationText={recommendationText}
             recommendationLoading={recommendationLoading}
           />
+          </div>
         </div>
       </div>
       <MobileEstimateBar
         estimate={estimate}
         timeline={timeline}
         complexity={complexity}
+        recommendationText={recommendationText}
+        recommendationLoading={recommendationLoading}
         ctaLabel={mobileCtaLabel}
         onCtaClick={onMobileCtaClick}
         ctaDisabled={mobileCtaDisabled}

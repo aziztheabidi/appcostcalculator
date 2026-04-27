@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:wp": "npm run build && mkdir -p \"wordpress-plugin/pixact-cost-calculator/assets/calculator/assets\" && cp \"dist/manifest.json\" \"wordpress-plugin/pixact-cost-calculator/assets/calculator/manifest.json\" && cp \"dist/assets/index.js\" \"wordpress-plugin/pixact-cost-calculator/assets/calculator/assets/index.js\" && cp \"dist/assets/index.css\" \"wordpress-plugin/pixact-cost-calculator/assets/calculator/assets/index.css\" && cp \"dist/assets/LeadCaptureForm.js\" \"wordpress-plugin/pixact-cost-calculator/assets/calculator/assets/LeadCaptureForm.js\"",
+    "package:wp": "npm run build:wp && rm -f \"pixact-cost-calculator.zip\" && cd \"wordpress-plugin\" && zip -r \"../pixact-cost-calculator.zip\" \"pixact-cost-calculator\"",
     "lint": "eslint .",
     "preview": "vite preview"
   },
