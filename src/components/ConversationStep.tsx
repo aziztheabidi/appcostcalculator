@@ -34,13 +34,6 @@ export const ConversationStep = ({
         <header className="space-y-2">
           <h2 className="ds-subheading">{title}</h2>
           <p className="ds-body">{description}</p>
-        </header>
-
-        <HelpAccordion text={helpText} />
-
-        <div className="space-y-3">
-          <p className="text-sm font-semibold text-slate-700">{questionLabel}</p>
-          {children}
           <div className="min-h-5">
             {microcopyLoading ? (
               <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200/80" aria-hidden="true" />
@@ -48,6 +41,13 @@ export const ConversationStep = ({
               <p className="text-xs text-slate-500 transition-opacity duration-200">{microcopy}</p>
             ) : null}
           </div>
+        </header>
+
+        <HelpAccordion text={helpText} />
+
+        <div className="space-y-3">
+          <p className="text-sm font-semibold text-slate-700">{questionLabel}</p>
+          {children}
         </div>
 
         <div className="flex items-center justify-between pt-2">

@@ -6,6 +6,8 @@ interface StickyEstimatePanelProps {
   timeline: string
   complexity: string
   insights: string[]
+  recommendationText: string
+  recommendationLoading?: boolean
 }
 
 const getTimelineRange = (timeline: string): string => {
@@ -28,6 +30,8 @@ export const StickyEstimatePanel = ({
   timeline,
   complexity,
   insights,
+  recommendationText,
+  recommendationLoading = false,
 }: StickyEstimatePanelProps) => {
   const min = Math.round(estimate.total * 0.9)
   const max = Math.round(estimate.total * 1.1)
@@ -54,7 +58,21 @@ export const StickyEstimatePanel = ({
         </div>
       </div>
 
-      <div className="mt-5 min-h-40 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+      <div className="mt-5 min-h-20 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+        <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Recommendation</p>
+        <div className="mt-2 min-h-10">
+          {recommendationLoading ? (
+            <div className="space-y-2">
+              <div className="h-3 w-11/12 animate-pulse rounded bg-slate-200/80" aria-hidden="true" />
+              <div className="h-3 w-8/12 animate-pulse rounded bg-slate-200/80" aria-hidden="true" />
+            </div>
+          ) : (
+            <p className="text-sm leading-relaxed text-slate-700 transition-opacity duration-200">{recommendationText}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 min-h-40 rounded-2xl border border-slate-200 bg-slate-50 p-3">
         <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Dynamic insights</p>
         <ul className="mt-2 space-y-2 text-sm leading-relaxed text-slate-700">
           {insights.map((insight) => (

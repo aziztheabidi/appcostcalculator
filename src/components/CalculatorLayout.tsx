@@ -9,6 +9,8 @@ interface CalculatorLayoutProps {
   timeline: string
   complexity: string
   insights: string[]
+  recommendationText: string
+  recommendationLoading?: boolean
   mobileCtaLabel: "Continue" | "See Estimate"
   onMobileCtaClick: () => void
   mobileCtaDisabled?: boolean
@@ -20,6 +22,8 @@ export const CalculatorLayout = ({
   timeline,
   complexity,
   insights,
+  recommendationText,
+  recommendationLoading = false,
   mobileCtaLabel,
   onMobileCtaClick,
   mobileCtaDisabled = false,
@@ -34,6 +38,8 @@ export const CalculatorLayout = ({
             timeline={timeline}
             complexity={complexity}
             insights={insights}
+            recommendationText={recommendationText}
+            recommendationLoading={recommendationLoading}
           />
         </div>
       </div>

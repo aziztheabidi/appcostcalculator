@@ -23,6 +23,9 @@ final class Pixact_Cost_Calculator_Plugin {
 	const AI_SETTINGS_OPTION = 'pixact_calculator_ai_settings';
 	const AI_SETTINGS_GROUP = 'pixact_calculator_ai_settings_group';
 	const MIN_SECONDS_TO_SUBMIT = 3;
+	const AI_FAILURE_THRESHOLD = 3;
+	const AI_FAILURE_WINDOW_SECONDS = 600;
+	const AI_KILL_SWITCH_SECONDS = 900;
 
 	public function __construct() {
 		add_action('init', array($this, 'register_cpt'));
@@ -573,19 +576,23 @@ final class Pixact_Cost_Calculator_Plugin {
 			return new WP_REST_Response(array('message' => 'Invalid payload'), 400);
 		}
 
-		$step = sanitize_key($params['step'] ?? '');
-		$answers = isset($params['answers']) && is_array($params['answers'])
+		$raw_step = sanitize_key($params['step'] ?? '');
+		$step = $this->normalize_step_name($raw_step);
+		$raw_answers = isset($params['answers']) && is_array($params['answers'])
 			? $this->sanitize_answers_recursive($params['answers'])
 			: array();
+		$answers = $this->filter_meaningful_answers($raw_answers);
 		$calculator_type = sanitize_text_field($params['calculator_type'] ?? 'app-web-cost-calculator');
+		$context_flags = $this->build_context_flags($answers);
 
 		if (empty($step)) {
 			return new WP_REST_Response(array('message' => 'Missing step'), 422);
 		}
 
-		$cache_key = 'pixact_mc_' . md5(wp_json_encode(array($step, $answers, $calculator_type)));
+		$cache_key = 'pixact_mc_' . md5(wp_json_encode(array($step, $answers, $context_flags, $calculator_type)));
 		$cached = get_transient($cache_key);
 		if (is_array($cached) && isset($cached['helper_text'], $cached['explanation'], $cached['recommendation'])) {
+			$this->log_debug('Microcopy cache hit.');
 			return new WP_REST_Response($cached, 200);
 		}
 		$rate_key = 'pixact_mcr_' . md5($cache_key);
@@ -596,13 +603,14 @@ final class Pixact_Cost_Calculator_Plugin {
 		set_transient($rate_key, 1, 2);
 
 		$ai_settings = $this->get_ai_settings();
-		if (empty($ai_settings['enabled']) || empty($ai_settings['api_key'])) {
+		if ($this->is_ai_killed() || empty($ai_settings['enabled']) || empty($ai_settings['api_key'])) {
+			$this->log_debug('Microcopy fallback due to AI disabled or kill switch.');
 			$fallback = $this->get_default_microcopy_for_step($step);
 			set_transient($cache_key, $fallback, 6 * HOUR_IN_SECONDS);
 			return new WP_REST_Response($fallback, 200);
 		}
 
-		$prompt = $this->build_microcopy_prompt($step, $answers, $calculator_type);
+		$prompt = $this->build_microcopy_prompt($step, $answers, $context_flags, $calculator_type);
 		$ai_response = wp_remote_post(
 			'https://api.openai.com/v1/chat/completions',
 			array(
@@ -627,17 +635,23 @@ final class Pixact_Cost_Calculator_Plugin {
 
 		if (is_wp_error($ai_response) || wp_remote_retrieve_response_code($ai_response) >= 400) {
 			$this->log_debug('Microcopy API request failed.');
+			$this->register_ai_failure();
 			$fallback = $this->get_default_microcopy_for_step($step);
 			set_transient($cache_key, $fallback, 6 * HOUR_IN_SECONDS);
 			return new WP_REST_Response($fallback, 200);
 		}
+		$this->clear_ai_failure_state();
+		$this->log_debug('Microcopy API request succeeded.');
 
 		$body = json_decode(wp_remote_retrieve_body($ai_response), true);
 		$content = $body['choices'][0]['message']['content'] ?? '';
 		$parsed = $this->parse_microcopy_content($content);
 		if (empty($parsed['helper_text']) || empty($parsed['explanation']) || empty($parsed['recommendation'])) {
 			$this->log_debug('Microcopy API parse failed, using fallback.');
+			$this->register_ai_failure();
 			$parsed = $this->get_default_microcopy_for_step($step);
+		} else {
+			$this->clear_ai_failure_state();
 		}
 
 		set_transient($cache_key, $parsed, 6 * HOUR_IN_SECONDS);
@@ -682,14 +696,108 @@ final class Pixact_Cost_Calculator_Plugin {
 		return '';
 	}
 
-	private function build_microcopy_prompt($step, $answers, $calculator_type) {
-		return "You are a senior product consultant at a high-end software development company.\n\nYour job is to guide potential clients through estimating their app or website project.\n\nYou must generate three outputs:\n\n1. helper_text (max 18 words)\n- Short, guiding sentence\n- Helps user understand what to choose\n\n2. explanation (max 50 words)\n- Clear explanation of the concept\n- No jargon\n- Simple but authoritative\n\n3. recommendation (max 2 lines)\n- Insight based on user selections\n- Suggest smarter approach (MVP, phased build, cost control, etc.)\n\nTone rules:\n- Confident but not pushy\n- Professional and human\n- No buzzwords\n- No fluff\n- No emojis\n- No exclamation marks\n- No marketing hype\n- Sound like an experienced consultant, not a salesperson\n\nImportant:\n- Be consistent across steps\n- Do not contradict previous guidance\n- Do not mention pricing unless necessary\n- Do not over-explain\n\nContext:\n\nCalculator Type: " . $calculator_type . "\nCurrent Step: " . $step . "\nUser Selections: " . wp_json_encode($answers) . "\n\nOutput strictly in JSON format:\n\n{\n  \"helper_text\": \"\",\n  \"explanation\": \"\",\n  \"recommendation\": \"\"\n}";
+	private function normalize_step_name($step) {
+		$map = array(
+			'step1' => 'platform',
+			'step2' => 'features',
+			'step3' => 'timeline',
+			'step4' => 'roles',
+			'step5' => 'budget',
+			'platform' => 'platform',
+			'features' => 'features',
+			'backend' => 'backend',
+			'design' => 'design',
+			'timeline' => 'timeline',
+			'budget' => 'budget',
+			'roles' => 'roles',
+		);
+
+		return $map[$step] ?? 'platform';
+	}
+
+	private function filter_meaningful_answers($answers) {
+		$meaningful = array();
+		$project_type = sanitize_text_field($answers['projectType'] ?? '');
+		$complexity = sanitize_text_field($answers['complexity'] ?? '');
+		$timeline = sanitize_text_field($answers['timeline'] ?? '');
+		$addons = isset($answers['addons']) && is_array($answers['addons']) ? array_map('sanitize_text_field', $answers['addons']) : array();
+
+		if (!empty($project_type)) {
+			$meaningful['project_type'] = $project_type;
+		}
+		if (!empty($complexity)) {
+			$meaningful['complexity'] = $complexity;
+		}
+		if (!empty($timeline)) {
+			$meaningful['timeline'] = $timeline;
+		}
+		if (!empty($addons)) {
+			$meaningful['addons'] = array_values($addons);
+		}
+
+		return $meaningful;
+	}
+
+	private function build_context_flags($answers) {
+		$addons = isset($answers['addons']) && is_array($answers['addons']) ? $answers['addons'] : array();
+		$feature_count = count($addons);
+		$complexity = sanitize_text_field($answers['complexity'] ?? '');
+		$timeline = sanitize_text_field($answers['timeline'] ?? '');
+		$roles = isset($answers['roles']) && is_array($answers['roles']) ? $answers['roles'] : array();
+		$roles_count = count($roles);
+		$high_complexity = in_array($complexity, array('premium', 'enterprise'), true);
+
+		$has_ai = false;
+		foreach ($addons as $addon) {
+			if (strpos(strtolower((string) $addon), 'ai') !== false) {
+				$has_ai = true;
+				break;
+			}
+		}
+
+		return array(
+			'has_ai' => $has_ai,
+			'feature_count' => $feature_count,
+			'is_high_complexity' => $high_complexity,
+			'high_complexity' => $high_complexity,
+			'is_low_budget' => false,
+			'is_urgent' => $timeline === 'urgent',
+			'roles_count' => $roles_count,
+			'multiple_roles' => $roles_count > 1,
+		);
+	}
+
+	private function build_microcopy_prompt($step, $answers, $context_flags, $calculator_type) {
+		return "You are a senior product consultant at a high-end software development company.\n\nYour job is to guide potential clients through estimating their app or website project.\n\nYou must generate three outputs:\n\n1. helper_text (max 18 words)\n- Short, guiding sentence\n- Helps user understand what to choose\n\n2. explanation (max 50 words)\n- Clear explanation of the concept\n- No jargon\n- Simple but authoritative\n\n3. recommendation (max 2 lines)\n- Insight based on user selections\n- Suggest smarter approach (MVP, phased build, cost control, etc.)\n\nTone rules:\n- Confident but not pushy\n- Professional and human\n- No buzzwords\n- No fluff\n- No emojis\n- No exclamation marks\n- No marketing hype\n- Sound like an experienced consultant, not a salesperson\n\nImportant:\n- Be consistent across steps\n- Do not contradict previous guidance\n- Do not mention pricing unless necessary\n- Do not over-explain\n\nDecision rules:\n- If feature_count > 6: suggest MVP or phased approach.\n- If has_ai is true: mention planning, testing, and integration complexity.\n- If is_urgent is true: mention increased cost or parallel development.\n- If is_low_budget and high_complexity: suggest starting with core features only.\n- If multiple_roles: mention increased backend and logic complexity.\n\nThese rules must influence recommendation output.\nDo not output the rules themselves.\n\nContext:\n\nCalculator Type: " . $calculator_type . "\nCurrent Step: " . $step . "\nUser Selections (filtered): " . wp_json_encode($answers) . "\nContext Flags: " . wp_json_encode($context_flags) . "\n\nOutput strictly in JSON format:\n\n{\n  \"helper_text\": \"\",\n  \"explanation\": \"\",\n  \"recommendation\": \"\"\n}";
 	}
 
 	private function log_debug($message) {
 		if (defined('WP_DEBUG') && WP_DEBUG) {
 			error_log('[Pixact Calculator] ' . sanitize_text_field($message));
 		}
+	}
+
+	private function is_ai_killed() {
+		return (bool) get_transient('pixact_ai_kill_switch');
+	}
+
+	private function register_ai_failure() {
+		$state = get_transient('pixact_ai_fail_state');
+		if (!is_array($state)) {
+			$state = array('count' => 0);
+		}
+		$state['count'] = (int) $state['count'] + 1;
+		set_transient('pixact_ai_fail_state', $state, self::AI_FAILURE_WINDOW_SECONDS);
+
+		if ($state['count'] >= self::AI_FAILURE_THRESHOLD) {
+			set_transient('pixact_ai_kill_switch', 1, self::AI_KILL_SWITCH_SECONDS);
+			$this->log_debug('AI kill switch activated after repeated failures.');
+		}
+	}
+
+	private function clear_ai_failure_state() {
+		delete_transient('pixact_ai_fail_state');
+		delete_transient('pixact_ai_kill_switch');
 	}
 
 	private function parse_microcopy_content($content) {
@@ -703,10 +811,19 @@ final class Pixact_Cost_Calculator_Plugin {
 		}
 
 		return array(
-			'helper_text' => sanitize_text_field($decoded['helper_text'] ?? ''),
-			'explanation' => sanitize_text_field($decoded['explanation'] ?? ''),
-			'recommendation' => sanitize_text_field($decoded['recommendation'] ?? ''),
+			'helper_text' => $this->clamp_text(sanitize_text_field($decoded['helper_text'] ?? ''), 180),
+			'explanation' => $this->clamp_text(sanitize_text_field($decoded['explanation'] ?? ''), 420),
+			'recommendation' => $this->clamp_text(sanitize_text_field($decoded['recommendation'] ?? ''), 260),
 		);
+	}
+
+	private function clamp_text($text, $max_chars) {
+		$text = (string) $text;
+		if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+			return mb_strlen($text) > $max_chars ? mb_substr($text, 0, $max_chars) : $text;
+		}
+
+		return strlen($text) > $max_chars ? substr($text, 0, $max_chars) : $text;
 	}
 
 	private function get_default_microcopy_for_step($step) {
@@ -718,6 +835,13 @@ final class Pixact_Cost_Calculator_Plugin {
 			'step3' => array('helper' => 'step3Microcopy', 'explanation' => 'step3Explanation'),
 			'step4' => array('helper' => 'step4Microcopy', 'explanation' => 'step4Explanation'),
 			'step5' => array('helper' => 'step5Subtitle', 'explanation' => 'step5Explanation'),
+			'platform' => array('helper' => 'step1Microcopy', 'explanation' => 'step1Explanation'),
+			'features' => array('helper' => 'step2Microcopy', 'explanation' => 'step2Explanation'),
+			'timeline' => array('helper' => 'step3Microcopy', 'explanation' => 'step3Explanation'),
+			'roles' => array('helper' => 'step4Microcopy', 'explanation' => 'step4Explanation'),
+			'budget' => array('helper' => 'step5Subtitle', 'explanation' => 'step5Explanation'),
+			'backend' => array('helper' => 'step2Microcopy', 'explanation' => 'step2Explanation'),
+			'design' => array('helper' => 'step4Microcopy', 'explanation' => 'step4Explanation'),
 		);
 		$keys = $step_key_map[$step] ?? $step_key_map['step1'];
 

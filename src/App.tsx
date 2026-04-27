@@ -428,6 +428,8 @@ function App() {
       timeline={timelineLabel}
       complexity={complexityLabel}
       insights={mergedInsights}
+      recommendationText={activeRecommendation}
+      recommendationLoading={activeMicrocopyLoading}
       mobileCtaLabel={mobileCtaLabel}
       onMobileCtaClick={handleMobileCta}
       mobileCtaDisabled={mobileCtaDisabled}
