@@ -9,6 +9,7 @@ import type {
   Timeline,
 } from "../types/calculator"
 import { calculateEstimate } from "../lib/pricingEngine"
+import { useDebouncedValue } from "./useDebouncedValue"
 
 const defaultLead: LeadFormData = {
   fullName: "",
@@ -29,8 +30,12 @@ const initialState: CalculatorFormState = {
 
 export const useCalculator = (pricingConfig: CalculatorPricingConfig) => {
   const [formState, setFormState] = useState<CalculatorFormState>(initialState)
+  const debouncedFormState = useDebouncedValue(formState, 120)
 
-  const estimate = useMemo(() => calculateEstimate(formState, pricingConfig), [formState, pricingConfig])
+  const estimate = useMemo(
+    () => calculateEstimate(debouncedFormState, pricingConfig),
+    [debouncedFormState, pricingConfig],
+  )
 
   const setProjectType = (projectType: ProjectType) => {
     setFormState((prev) => ({ ...prev, projectType }))

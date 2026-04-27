@@ -36,7 +36,9 @@ export const submitCalculatorLead = async (
   }
 
   if (runtime.mode === "mock") {
-    console.warn("PixactCalculator config missing. Using simulated success mode.")
+    if (import.meta.env.DEV) {
+      console.warn("PixactCalculator config missing. Using simulated success mode.")
+    }
     await sleep(700)
     return { ok: true }
   }

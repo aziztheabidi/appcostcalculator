@@ -70,22 +70,24 @@ final class Pixact_Cost_Calculator_Plugin {
 		$asset_base_url = plugin_dir_url(__FILE__) . 'assets/calculator/';
 		$asset_base_dir = plugin_dir_path(__FILE__) . 'assets/calculator/';
 
-		$script_path = $asset_base_dir . 'calculator.js';
-		$style_path = $asset_base_dir . 'calculator.css';
+		$script_candidates = glob($asset_base_dir . 'index-*.js');
+		$style_candidates = glob($asset_base_dir . 'index-*.css');
+		$script_path = !empty($script_candidates) ? $script_candidates[0] : '';
+		$style_path = !empty($style_candidates) ? $style_candidates[0] : '';
 
-		if (file_exists($style_path)) {
+		if (!empty($style_path) && file_exists($style_path)) {
 			wp_enqueue_style(
 				self::STYLE_HANDLE,
-				$asset_base_url . 'calculator.css',
+				$asset_base_url . basename($style_path),
 				array(),
 				filemtime($style_path)
 			);
 		}
 
-		if (file_exists($script_path)) {
+		if (!empty($script_path) && file_exists($script_path)) {
 			wp_enqueue_script(
 				self::SCRIPT_HANDLE,
-				$asset_base_url . 'calculator.js',
+				$asset_base_url . basename($script_path),
 				array(),
 				filemtime($script_path),
 				true

@@ -1,16 +1,19 @@
-import { useMemo, useState } from "react"
-import { EstimatePreview } from "./components/EstimatePreview"
-import { ExplanationBox } from "./components/ExplanationBox"
-import { LeadCaptureForm } from "./components/LeadCaptureForm"
-import { OptionGrid } from "./components/OptionGrid"
+import { lazy, Suspense, useMemo, useState } from "react"
+import { CalculatorLayout } from "./components/CalculatorLayout"
+import { ConversationStep } from "./components/ConversationStep"
+import { OptionCard } from "./components/OptionCard"
 import { ProgressBar } from "./components/ProgressBar"
-import { StepLayout } from "./components/StepLayout"
 import { loadRuntimeConfig } from "./config/runtime"
 import { useCalculator } from "./hooks/useCalculator"
 import { formatCurrency } from "./lib/pricingEngine"
 import { submitCalculatorLead } from "./lib/wordpressApi"
 
 const totalSteps = 5
+const LeadCaptureForm = lazy(() =>
+  import("./components/LeadCaptureForm").then((module) => ({ default: module.LeadCaptureForm })),
+)
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const phoneRegex = /^[+\d\s().-]{7,20}$/
 
 function App() {
   const runtime = useMemo(() => loadRuntimeConfig(), [])
@@ -20,6 +23,7 @@ function App() {
   const [submitting, setSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; phone?: string }>({})
 
   const canContinue = (
     (step === 1 && Boolean(formState.projectType)) ||
@@ -28,7 +32,7 @@ function App() {
     step === 4
   )
 
-  const canSubmitLead = Boolean(formState.lead.fullName && formState.lead.email)
+  const canSubmitLead = Boolean(formState.lead.fullName && formState.lead.email && !submitting && !isSubmitted)
 
   const nextStep = () => {
     setStep((current) => Math.min(current + 1, totalSteps))
@@ -39,8 +43,23 @@ function App() {
   }
 
   const handleSubmitLead = async () => {
+    if (submitting || isSubmitted) return
+
     if (!canSubmitLead) {
       setError("Please add at least your full name and work email.")
+      return
+    }
+
+    const nextFieldErrors: { email?: string; phone?: string } = {}
+    if (!emailRegex.test(formState.lead.email.trim())) {
+      nextFieldErrors.email = "Enter a valid email address."
+    }
+    if (formState.lead.phone.trim() && !phoneRegex.test(formState.lead.phone.trim())) {
+      nextFieldErrors.phone = "Enter a valid phone number."
+    }
+    setFieldErrors(nextFieldErrors)
+    if (Object.keys(nextFieldErrors).length) {
+      setError("Please fix the highlighted fields before submitting.")
       return
     }
 
@@ -69,192 +88,163 @@ function App() {
   }
 
   const modeLabel = runtime.mode === "wordpress" ? "WordPress mode" : "Mock mode"
+  const timelineLabel = formState.timeline ?? "Not selected"
+  const complexityLabel = formState.complexity ?? "Not selected"
+
+  const renderSelectableCards = <T extends string,>(
+    options: Array<{ value: T; label: string; description: string; badge?: string }>,
+    selectedValues: T[],
+    onToggle: (value: T) => void,
+  ) => (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {options.map((option) => {
+        const selected = selectedValues.includes(option.value)
+        return (
+          <OptionCard
+            key={option.value}
+            label={option.label}
+            description={option.description}
+            badge={option.badge}
+            selected={selected}
+            onClick={() => onToggle(option.value)}
+          />
+        )
+      })}
+    </div>
+  )
+
+  const leftConversation = (
+    <>
+      <div className="rounded-3xl border border-white/60 bg-white/75 p-5 shadow-lg shadow-slate-200/60 backdrop-blur-md sm:p-7">
+        <p className="inline-flex rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold tracking-wide text-red-700 uppercase">
+          Conversational cost calculator
+        </p>
+        <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+          Build your project estimate in minutes.
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">
+          Smart step-by-step flow for WordPress embeds. Current mode: {modeLabel}.
+        </p>
+      </div>
+
+      <ProgressBar currentStep={step} totalSteps={totalSteps} />
+
+      {step === 1 ? (
+        <ConversationStep
+          title={calculatorConfig.ui.step1Title}
+          description={calculatorConfig.ui.step1Subtitle}
+          helpText={calculatorConfig.ui.step1Explanation}
+          questionLabel="Choose project type"
+          onNext={nextStep}
+          nextDisabled={!canContinue}
+        >
+          {renderSelectableCards(
+            calculatorConfig.projectOptions,
+            formState.projectType ? [formState.projectType] : [],
+            setProjectType,
+          )}
+        </ConversationStep>
+      ) : null}
+
+      {step === 2 ? (
+        <ConversationStep
+          title={calculatorConfig.ui.step2Title}
+          description={calculatorConfig.ui.step2Subtitle}
+          helpText={calculatorConfig.ui.step2Explanation}
+          questionLabel="Choose complexity level"
+          onBack={previousStep}
+          onNext={nextStep}
+          nextDisabled={!canContinue}
+        >
+          {renderSelectableCards(
+            calculatorConfig.complexityOptions,
+            formState.complexity ? [formState.complexity] : [],
+            setComplexity,
+          )}
+        </ConversationStep>
+      ) : null}
+
+      {step === 3 ? (
+        <ConversationStep
+          title={calculatorConfig.ui.step3Title}
+          description={calculatorConfig.ui.step3Subtitle}
+          helpText={calculatorConfig.ui.step3Explanation}
+          questionLabel="Choose delivery timeline"
+          onBack={previousStep}
+          onNext={nextStep}
+          nextDisabled={!canContinue}
+        >
+          {renderSelectableCards(
+            calculatorConfig.timelineOptions,
+            formState.timeline ? [formState.timeline] : [],
+            setTimeline,
+          )}
+        </ConversationStep>
+      ) : null}
+
+      {step === 4 ? (
+        <ConversationStep
+          title={calculatorConfig.ui.step4Title}
+          description={calculatorConfig.ui.step4Subtitle}
+          helpText={calculatorConfig.ui.step4Explanation}
+          questionLabel="Choose add-ons"
+          onBack={previousStep}
+          onNext={nextStep}
+          nextLabel="Continue"
+        >
+          {renderSelectableCards(calculatorConfig.addonOptions, formState.addons, toggleAddon)}
+        </ConversationStep>
+      ) : null}
+
+      {step === 5 ? (
+        <ConversationStep
+          title={isSubmitted ? "Your estimate is ready" : calculatorConfig.ui.step5Title}
+          description={calculatorConfig.ui.step5Subtitle}
+          helpText={calculatorConfig.ui.step5Explanation}
+          questionLabel="Share your contact details"
+          onBack={previousStep}
+          onNext={handleSubmitLead}
+          nextLabel={isSubmitted ? "Submitted" : submitting ? "Submitting..." : "Get my estimate"}
+          nextDisabled={submitting || isSubmitted}
+        >
+          <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading form...</div>}>
+            <LeadCaptureForm
+              lead={formState.lead}
+              onChange={updateLead}
+              emailError={fieldErrors.email}
+              phoneError={fieldErrors.phone}
+            />
+          </Suspense>
+          {isSubmitted ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+              Thanks! Submission successful. Your current estimate range is {formatCurrency(Math.round(estimate.total * 0.9))} - {formatCurrency(Math.round(estimate.total * 1.1))}.
+            </div>
+          ) : null}
+          {error ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+              <p className="text-sm font-medium text-red-700">{error}</p>
+              <button
+                type="button"
+                onClick={handleSubmitLead}
+                disabled={submitting}
+                className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-red-300"
+              >
+                {submitting ? "Retrying..." : "Retry submission"}
+              </button>
+            </div>
+          ) : null}
+        </ConversationStep>
+      ) : null}
+    </>
+  )
 
   return (
-    <main className="mx-auto w-full max-w-6xl p-4 sm:p-6 lg:p-10">
-      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-        <section className="space-y-5">
-          <div className="rounded-3xl border border-white/70 bg-white/90 p-5 shadow-lg shadow-slate-200/60 backdrop-blur-sm sm:p-7">
-            <p className="inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold tracking-wide text-indigo-700 uppercase">
-              Embedded cost calculator
-            </p>
-            <h1 className="mt-4 text-3xl leading-tight font-bold text-slate-900 sm:text-4xl">
-              Plan your {formState.projectType ?? "digital"} project budget with clarity.
-            </h1>
-            <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
-              Premium, step-by-step estimate flow designed for WordPress shortcode embeds.
-              This build runs with {modeLabel} and communicates through WordPress REST only.
-            </p>
-            <p className="mt-3 text-xs text-slate-500">Environment: {runtime.config.siteUrl}</p>
-          </div>
-
-          <ProgressBar currentStep={step} totalSteps={totalSteps} />
-
-          {step === 1 ? (
-            <StepLayout
-              title={calculatorConfig.ui.step1Title}
-              subtitle={calculatorConfig.ui.step1Subtitle}
-              footer={
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={nextStep}
-                    disabled={!canContinue}
-                    className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
-                    Continue
-                  </button>
-                </div>
-              }
-            >
-              <OptionGrid
-                options={calculatorConfig.projectOptions}
-                selectedValues={formState.projectType ? [formState.projectType] : []}
-                onToggle={(value) => setProjectType(value)}
-              />
-              <ExplanationBox text={calculatorConfig.ui.step1Explanation} />
-            </StepLayout>
-          ) : null}
-
-          {step === 2 ? (
-            <StepLayout
-              title={calculatorConfig.ui.step2Title}
-              subtitle={calculatorConfig.ui.step2Subtitle}
-              footer={
-                <div className="flex items-center justify-between">
-                  <button type="button" onClick={previousStep} className="rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700">
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={nextStep}
-                    disabled={!canContinue}
-                    className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
-                    Continue
-                  </button>
-                </div>
-              }
-            >
-              <OptionGrid
-                options={calculatorConfig.complexityOptions}
-                selectedValues={formState.complexity ? [formState.complexity] : []}
-                onToggle={(value) => setComplexity(value)}
-              />
-              <ExplanationBox text={calculatorConfig.ui.step2Explanation} />
-            </StepLayout>
-          ) : null}
-
-          {step === 3 ? (
-            <StepLayout
-              title={calculatorConfig.ui.step3Title}
-              subtitle={calculatorConfig.ui.step3Subtitle}
-              footer={
-                <div className="flex items-center justify-between">
-                  <button type="button" onClick={previousStep} className="rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700">
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={nextStep}
-                    disabled={!canContinue}
-                    className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
-                    Continue
-                  </button>
-                </div>
-              }
-            >
-              <OptionGrid
-                options={calculatorConfig.timelineOptions}
-                selectedValues={formState.timeline ? [formState.timeline] : []}
-                onToggle={(value) => setTimeline(value)}
-              />
-              <ExplanationBox text={calculatorConfig.ui.step3Explanation} />
-            </StepLayout>
-          ) : null}
-
-          {step === 4 ? (
-            <StepLayout
-              title={calculatorConfig.ui.step4Title}
-              subtitle={calculatorConfig.ui.step4Subtitle}
-              footer={
-                <div className="flex items-center justify-between">
-                  <button type="button" onClick={previousStep} className="rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700">
-                    Back
-                  </button>
-                  <button type="button" onClick={nextStep} className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white">
-                    Continue
-                  </button>
-                </div>
-              }
-            >
-              <OptionGrid options={calculatorConfig.addonOptions} selectedValues={formState.addons} onToggle={toggleAddon} multi />
-              <ExplanationBox text={calculatorConfig.ui.step4Explanation} />
-            </StepLayout>
-          ) : null}
-
-          {step === 5 ? (
-            <StepLayout
-              title={isSubmitted ? "Your estimate is ready" : calculatorConfig.ui.step5Title}
-              subtitle={calculatorConfig.ui.step5Subtitle}
-              footer={
-                <div className="flex items-center justify-between">
-                  <button type="button" onClick={previousStep} className="rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700">
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSubmitLead}
-                    disabled={submitting || isSubmitted}
-                    className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-indigo-300"
-                  >
-                    {isSubmitted ? "Submitted" : submitting ? "Submitting..." : "Get my estimate"}
-                  </button>
-                </div>
-              }
-            >
-              <LeadCaptureForm lead={formState.lead} onChange={updateLead} />
-              {isSubmitted ? (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-                  Thanks! Your request is submitted successfully. Here is your estimate range:
-                </div>
-              ) : null}
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                <p className="font-semibold text-slate-900">Estimated range: {formatCurrency(estimate.total)}</p>
-                <p className="mt-1">
-                  This is a directional price based on your current selections. Final proposal details come after review.
-                </p>
-              </div>
-              {error ? (
-                <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
-                  <p className="text-sm font-medium text-red-700">{error}</p>
-                  <button
-                    type="button"
-                    onClick={handleSubmitLead}
-                    disabled={submitting}
-                    className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-red-300"
-                  >
-                    {submitting ? "Retrying..." : "Retry submission"}
-                  </button>
-                </div>
-              ) : null}
-              <ExplanationBox text={calculatorConfig.ui.step5Explanation} />
-            </StepLayout>
-          ) : null}
-        </section>
-
-        <aside className="space-y-4">
-          <EstimatePreview estimate={estimate} />
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm">
-            <p className="font-semibold text-slate-900">CTA-focused embed</p>
-            <p className="mt-2">
-              Use this app output in WordPress shortcode containers. It is frontend-only and REST-ready.
-            </p>
-          </div>
-        </aside>
-      </div>
-    </main>
+    <CalculatorLayout
+      left={leftConversation}
+      estimate={estimate}
+      timeline={timelineLabel}
+      complexity={complexityLabel}
+    />
   )
 }
 

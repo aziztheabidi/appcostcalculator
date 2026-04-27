@@ -22,11 +22,12 @@ export const OptionGrid = <TValue extends string>({
             key={option.value}
             type="button"
             onClick={() => onToggle(option.value)}
-            className={`rounded-2xl border p-4 text-left transition-all duration-200 ${
+            className={`rounded-2xl border p-4 text-left transition-all duration-200 focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:outline-none ${
               selected
                 ? "border-indigo-500 bg-indigo-50 shadow-md shadow-indigo-100"
                 : "border-slate-200 bg-white hover:border-indigo-300 hover:shadow-sm"
             }`}
+            aria-pressed={selected}
           >
             <div className="flex items-center justify-between">
               <p className="font-semibold text-slate-900">{option.label}</p>
