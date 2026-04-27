@@ -11,6 +11,7 @@ interface ConversationStepProps {
   onNext: () => void
   nextDisabled?: boolean
   nextLabel?: string
+  microcopy?: string
 }
 
 export const ConversationStep = ({
@@ -23,6 +24,7 @@ export const ConversationStep = ({
   onNext,
   nextDisabled,
   nextLabel = "Next",
+  microcopy,
 }: ConversationStepProps) => {
   return (
     <section className="rounded-3xl border border-white/60 bg-white/70 p-5 shadow-xl shadow-slate-200/50 backdrop-blur-md sm:p-7">
@@ -37,6 +39,7 @@ export const ConversationStep = ({
         <div className="space-y-3">
           <p className="text-sm font-semibold text-slate-700">{questionLabel}</p>
           {children}
+          {microcopy ? <p className="text-xs text-slate-500">{microcopy}</p> : null}
         </div>
 
         <div className="flex items-center justify-between pt-2">

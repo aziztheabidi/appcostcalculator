@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react"
+import { lazy, Suspense, useMemo, useState, type ReactNode } from "react"
 import { CalculatorLayout } from "./components/CalculatorLayout"
 import { ConversationStep } from "./components/ConversationStep"
 import { OptionCard } from "./components/OptionCard"
@@ -14,6 +14,42 @@ const LeadCaptureForm = lazy(() =>
 )
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const phoneRegex = /^[+\d\s().-]{7,20}$/
+
+const iconClass = "h-4 w-4"
+const AppTypeIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClass} aria-hidden="true">
+    <rect x="4" y="3" width="16" height="18" rx="2" />
+    <path d="M9 7h6M9 12h6M9 17h3" />
+  </svg>
+)
+const WebsiteIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClass} aria-hidden="true">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M3 9h18M8 4v5" />
+  </svg>
+)
+const SaasIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClass} aria-hidden="true">
+    <ellipse cx="12" cy="6" rx="7" ry="3" />
+    <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+  </svg>
+)
+const ComplexityIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClass} aria-hidden="true">
+    <path d="M4 16l4-4 3 3 6-6 3 3" />
+  </svg>
+)
+const TimelineIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClass} aria-hidden="true">
+    <circle cx="12" cy="12" r="8" />
+    <path d="M12 8v5l3 2" />
+  </svg>
+)
+const AddonIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClass} aria-hidden="true">
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+)
 
 function App() {
   const runtime = useMemo(() => loadRuntimeConfig(), [])
@@ -95,6 +131,7 @@ function App() {
     options: Array<{ value: T; label: string; description: string; badge?: string }>,
     selectedValues: T[],
     onToggle: (value: T) => void,
+    iconResolver?: (value: T) => ReactNode,
   ) => (
     <div className="grid gap-3 sm:grid-cols-2">
       {options.map((option) => {
@@ -104,6 +141,7 @@ function App() {
             key={option.value}
             label={option.label}
             description={option.description}
+            icon={iconResolver ? iconResolver(option.value) : undefined}
             badge={option.badge}
             selected={selected}
             onClick={() => onToggle(option.value)}
@@ -123,7 +161,7 @@ function App() {
           Build your project estimate in minutes.
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">
-          Smart step-by-step flow for WordPress embeds. Current mode: {modeLabel}.
+          Step-by-step cost calculator for app and web projects. Current mode: {modeLabel}.
         </p>
       </div>
 
@@ -135,6 +173,7 @@ function App() {
           description={calculatorConfig.ui.step1Subtitle}
           helpText={calculatorConfig.ui.step1Explanation}
           questionLabel="Choose project type"
+          microcopy="Tip: pick the core product first; you can refine scope in the next steps."
           onNext={nextStep}
           nextDisabled={!canContinue}
         >
@@ -142,6 +181,11 @@ function App() {
             calculatorConfig.projectOptions,
             formState.projectType ? [formState.projectType] : [],
             setProjectType,
+            (value) => {
+              if (value === "app") return <AppTypeIcon />
+              if (value === "website") return <WebsiteIcon />
+              return <SaasIcon />
+            },
           )}
         </ConversationStep>
       ) : null}
@@ -152,6 +196,7 @@ function App() {
           description={calculatorConfig.ui.step2Subtitle}
           helpText={calculatorConfig.ui.step2Explanation}
           questionLabel="Choose complexity level"
+          microcopy="Complexity has the strongest impact on development effort."
           onBack={previousStep}
           onNext={nextStep}
           nextDisabled={!canContinue}
@@ -160,6 +205,7 @@ function App() {
             calculatorConfig.complexityOptions,
             formState.complexity ? [formState.complexity] : [],
             setComplexity,
+            () => <ComplexityIcon />,
           )}
         </ConversationStep>
       ) : null}
@@ -170,6 +216,7 @@ function App() {
           description={calculatorConfig.ui.step3Subtitle}
           helpText={calculatorConfig.ui.step3Explanation}
           questionLabel="Choose delivery timeline"
+          microcopy="Faster delivery typically requires more parallel execution."
           onBack={previousStep}
           onNext={nextStep}
           nextDisabled={!canContinue}
@@ -178,6 +225,7 @@ function App() {
             calculatorConfig.timelineOptions,
             formState.timeline ? [formState.timeline] : [],
             setTimeline,
+            () => <TimelineIcon />,
           )}
         </ConversationStep>
       ) : null}
@@ -188,11 +236,12 @@ function App() {
           description={calculatorConfig.ui.step4Subtitle}
           helpText={calculatorConfig.ui.step4Explanation}
           questionLabel="Choose add-ons"
+          microcopy="Optional add-ons help shape a more accurate estimate."
           onBack={previousStep}
           onNext={nextStep}
           nextLabel="Continue"
         >
-          {renderSelectableCards(calculatorConfig.addonOptions, formState.addons, toggleAddon)}
+          {renderSelectableCards(calculatorConfig.addonOptions, formState.addons, toggleAddon, () => <AddonIcon />)}
         </ConversationStep>
       ) : null}
 
