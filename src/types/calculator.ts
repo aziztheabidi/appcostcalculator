@@ -59,18 +59,28 @@ export interface CalculatorUiConfig {
   step1Title: string
   step1Subtitle: string
   step1Explanation: string
+  step1Microcopy: string
   step2Title: string
   step2Subtitle: string
   step2Explanation: string
+  step2Microcopy: string
   step3Title: string
   step3Subtitle: string
   step3Explanation: string
+  step3Microcopy: string
   step4Title: string
   step4Subtitle: string
   step4Explanation: string
+  step4Microcopy: string
   step5Title: string
   step5Subtitle: string
   step5Explanation: string
+  leadFramingMessage: string
+  resultRecommendation: string
+  resultTrustLine: string
+  ctaConsultation: string
+  ctaPrototype: string
+  ctaDetailedEstimate: string
 }
 
 export interface CalculatorPricingConfig {

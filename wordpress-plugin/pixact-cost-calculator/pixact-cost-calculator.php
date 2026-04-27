@@ -16,9 +16,12 @@ final class Pixact_Cost_Calculator_Plugin {
 	const STYLE_HANDLE = 'pixact-cost-calculator';
 	const REST_NAMESPACE = 'pixact/v1';
 	const REST_ROUTE = '/lead';
+	const REST_MICROCOPY_ROUTE = '/microcopy';
 	const CPT = 'calculator_leads';
 	const SETTINGS_OPTION = 'pixact_calculator_settings';
 	const SETTINGS_GROUP = 'pixact_calculator_settings_group';
+	const AI_SETTINGS_OPTION = 'pixact_calculator_ai_settings';
+	const AI_SETTINGS_GROUP = 'pixact_calculator_ai_settings_group';
 	const MIN_SECONDS_TO_SUBMIT = 3;
 
 	public function __construct() {
@@ -100,6 +103,7 @@ final class Pixact_Cost_Calculator_Plugin {
 					'restUrl' => site_url('/wp-json/pixact/v1/'),
 					'nonce'   => wp_create_nonce('wp_rest'),
 					'siteUrl' => site_url(),
+					'aiEnabled' => !empty($this->get_ai_settings()['enabled']),
 					'calculatorConfig' => $this->get_settings(),
 				)
 			);
@@ -107,14 +111,12 @@ final class Pixact_Cost_Calculator_Plugin {
 	}
 
 	public function register_admin_menu() {
-		add_menu_page(
+		add_options_page(
 			'Pixact Calculator',
 			'Pixact Calculator',
 			'manage_options',
 			'pixact-cost-calculator',
-			array($this, 'render_settings_page'),
-			'dashicons-calculator',
-			58
+			array($this, 'render_settings_page')
 		);
 	}
 
@@ -128,6 +130,16 @@ final class Pixact_Cost_Calculator_Plugin {
 				'default' => $this->get_default_settings(),
 			)
 		);
+
+		register_setting(
+			self::AI_SETTINGS_GROUP,
+			self::AI_SETTINGS_OPTION,
+			array(
+				'type' => 'array',
+				'sanitize_callback' => array($this, 'sanitize_ai_settings'),
+				'default' => $this->get_default_ai_settings(),
+			)
+		);
 	}
 
 	public function render_settings_page() {
@@ -136,10 +148,57 @@ final class Pixact_Cost_Calculator_Plugin {
 		}
 
 		$settings = $this->get_settings();
+		$ai_settings = $this->get_ai_settings();
 		?>
 		<div class="wrap">
 			<h1>Pixact Cost Calculator Settings</h1>
 			<p>Configure all calculator questions, option labels, and relative prices directly from WordPress admin.</p>
+			<h2>AI Microcopy Settings</h2>
+			<form method="post" action="options.php">
+				<?php settings_fields(self::AI_SETTINGS_GROUP); ?>
+				<table class="form-table" role="presentation">
+					<tbody>
+						<tr>
+							<th scope="row">Enable AI microcopy</th>
+							<td>
+								<label>
+									<input type="checkbox" name="<?php echo esc_attr(self::AI_SETTINGS_OPTION); ?>[enabled]" value="1" <?php checked(!empty($ai_settings['enabled'])); ?> />
+									Generate helper text and recommendations with OpenAI.
+								</label>
+								<p class="description">Turns AI-generated helper text on or off.</p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row">OpenAI API Key</th>
+							<td>
+								<input
+									type="password"
+									class="regular-text"
+									name="<?php echo esc_attr(self::AI_SETTINGS_OPTION); ?>[api_key]"
+									value="<?php echo esc_attr($ai_settings['api_key']); ?>"
+									autocomplete="off"
+								/>
+								<p class="description">Used only on server requests to OpenAI. Never sent to visitors.</p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row">Model</th>
+							<td>
+								<input
+									class="regular-text"
+									name="<?php echo esc_attr(self::AI_SETTINGS_OPTION); ?>[model]"
+									value="<?php echo esc_attr($ai_settings['model']); ?>"
+								/>
+								<p class="description">Selects which OpenAI model generates microcopy. Default: gpt-4o-mini.</p>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+				<?php submit_button('Save AI Settings'); ?>
+			</form>
+
+			<hr style="margin: 24px 0;" />
+			<h2>Calculator Configuration</h2>
 			<form method="post" action="options.php">
 				<?php settings_fields(self::SETTINGS_GROUP); ?>
 				<table class="form-table" role="presentation">
@@ -147,6 +206,7 @@ final class Pixact_Cost_Calculator_Plugin {
 						<tr>
 							<th scope="row">Step 1 Content</th>
 							<td>
+								<p class="description">Question + helper text shown for platform selection.</p>
 								<input class="regular-text" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step1Title]" value="<?php echo esc_attr($settings['ui']['step1Title']); ?>" />
 								<p><input class="regular-text" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step1Subtitle]" value="<?php echo esc_attr($settings['ui']['step1Subtitle']); ?>" /></p>
 								<p><textarea class="large-text" rows="2" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step1Explanation]"><?php echo esc_textarea($settings['ui']['step1Explanation']); ?></textarea></p>
@@ -155,6 +215,7 @@ final class Pixact_Cost_Calculator_Plugin {
 						<tr>
 							<th scope="row">Step 2 Content</th>
 							<td>
+								<p class="description">Question + helper text shown for complexity selection.</p>
 								<input class="regular-text" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step2Title]" value="<?php echo esc_attr($settings['ui']['step2Title']); ?>" />
 								<p><input class="regular-text" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step2Subtitle]" value="<?php echo esc_attr($settings['ui']['step2Subtitle']); ?>" /></p>
 								<p><textarea class="large-text" rows="2" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step2Explanation]"><?php echo esc_textarea($settings['ui']['step2Explanation']); ?></textarea></p>
@@ -163,6 +224,7 @@ final class Pixact_Cost_Calculator_Plugin {
 						<tr>
 							<th scope="row">Step 3 Content</th>
 							<td>
+								<p class="description">Question + helper text shown for timeline selection.</p>
 								<input class="regular-text" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step3Title]" value="<?php echo esc_attr($settings['ui']['step3Title']); ?>" />
 								<p><input class="regular-text" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step3Subtitle]" value="<?php echo esc_attr($settings['ui']['step3Subtitle']); ?>" /></p>
 								<p><textarea class="large-text" rows="2" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step3Explanation]"><?php echo esc_textarea($settings['ui']['step3Explanation']); ?></textarea></p>
@@ -171,6 +233,7 @@ final class Pixact_Cost_Calculator_Plugin {
 						<tr>
 							<th scope="row">Step 4 Content</th>
 							<td>
+								<p class="description">Question + helper text shown for add-on selection.</p>
 								<input class="regular-text" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step4Title]" value="<?php echo esc_attr($settings['ui']['step4Title']); ?>" />
 								<p><input class="regular-text" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step4Subtitle]" value="<?php echo esc_attr($settings['ui']['step4Subtitle']); ?>" /></p>
 								<p><textarea class="large-text" rows="2" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step4Explanation]"><?php echo esc_textarea($settings['ui']['step4Explanation']); ?></textarea></p>
@@ -179,6 +242,7 @@ final class Pixact_Cost_Calculator_Plugin {
 						<tr>
 							<th scope="row">Step 5 Content</th>
 							<td>
+								<p class="description">Lead capture and final estimate messaging.</p>
 								<input class="regular-text" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step5Title]" value="<?php echo esc_attr($settings['ui']['step5Title']); ?>" />
 								<p><input class="regular-text" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step5Subtitle]" value="<?php echo esc_attr($settings['ui']['step5Subtitle']); ?>" /></p>
 								<p><textarea class="large-text" rows="2" name="<?php echo esc_attr(self::SETTINGS_OPTION); ?>[ui][step5Explanation]"><?php echo esc_textarea($settings['ui']['step5Explanation']); ?></textarea></p>
@@ -253,21 +317,31 @@ final class Pixact_Cost_Calculator_Plugin {
 				array('value' => 'seo', 'label' => 'SEO + Content Setup', 'description' => 'Technical optimization and launch content structure.', 'badge' => '', 'price' => 1500),
 			),
 			'ui' => array(
-				'step1Title' => 'What are you building?',
-				'step1Subtitle' => 'Select the primary product type so we can anchor your estimate.',
+				'step1Title' => 'Where do you want your product to be available?',
+				'step1Subtitle' => 'Pick the platform strategy that best matches your launch goals.',
 				'step1Explanation' => 'Project type sets the baseline effort. A SaaS platform includes core product architecture and usually carries a higher starting point than a brochure website.',
-				'step2Title' => 'How complex should it be?',
-				'step2Subtitle' => 'Complexity defines how deep we go on features and UX polish.',
+				'step1Microcopy' => 'Most startups choose cross-platform to launch faster and reduce initial cost.',
+				'step2Title' => 'How advanced should the first release be?',
+				'step2Subtitle' => 'Choose the level of depth needed for your first version.',
 				'step2Explanation' => 'Higher complexity increases engineering and QA depth. It reflects integrations, edge cases, and the level of product quality expected at launch.',
-				'step3Title' => 'What timeline are you targeting?',
-				'step3Subtitle' => 'Delivery speed impacts team allocation and pricing.',
+				'step2Microcopy' => 'A focused MVP often helps teams validate faster before scaling scope.',
+				'step3Title' => 'When are you aiming to launch?',
+				'step3Subtitle' => 'Timeline affects team allocation and delivery strategy.',
 				'step3Explanation' => 'Accelerated or urgent timelines require compressed planning and parallel implementation. That usually increases cost due to dedicated resourcing.',
+				'step3Microcopy' => 'A realistic timeline usually improves quality and reduces rework.',
 				'step4Title' => 'Add strategic extras',
 				'step4Subtitle' => 'Choose add-ons to fine-tune the proposal range.',
 				'step4Explanation' => 'Add-ons are fixed modules layered on top of your base scope. They can increase launch impact while keeping planning transparent.',
+				'step4Microcopy' => 'Prioritizing core features now can shorten delivery and control cost.',
 				'step5Title' => 'Unlock final estimate',
 				'step5Subtitle' => 'Share your details to receive a tailored follow-up scope.',
 				'step5Explanation' => 'Lead capture appears before the final CTA so your team can follow up with a tailored discovery call and accurate proposal.',
+				'leadFramingMessage' => 'We’ve prepared a tailored estimate based on your inputs. Enter your details to view your full breakdown.',
+				'resultRecommendation' => 'We recommend starting with a focused MVP to validate your core idea and scale efficiently.',
+				'resultTrustLine' => 'We do not lock you into this estimate. We first show a working direction or prototype before you commit.',
+				'ctaConsultation' => 'Schedule Free Consultation',
+				'ctaPrototype' => 'Request Prototype Preview',
+				'ctaDetailedEstimate' => 'Send Me Detailed Estimate',
 			),
 		);
 	}
@@ -278,8 +352,13 @@ final class Pixact_Cost_Calculator_Plugin {
 		if (!is_array($saved)) {
 			return $defaults;
 		}
+		$merged = wp_parse_args($saved, $defaults);
+		$merged['ui'] = wp_parse_args(
+			is_array($saved['ui'] ?? null) ? $saved['ui'] : array(),
+			$defaults['ui']
+		);
 
-		return wp_parse_args($saved, $defaults);
+		return $merged;
 	}
 
 	public function sanitize_settings($input) {
@@ -317,6 +396,35 @@ final class Pixact_Cost_Calculator_Plugin {
 		return $output;
 	}
 
+	private function get_default_ai_settings() {
+		return array(
+			'enabled' => 0,
+			'api_key' => '',
+			'model' => 'gpt-4o-mini',
+		);
+	}
+
+	private function get_ai_settings() {
+		$saved = get_option(self::AI_SETTINGS_OPTION, array());
+		$defaults = $this->get_default_ai_settings();
+		if (!is_array($saved)) {
+			return $defaults;
+		}
+
+		return wp_parse_args($saved, $defaults);
+	}
+
+	public function sanitize_ai_settings($input) {
+		$defaults = $this->get_default_ai_settings();
+		$input = is_array($input) ? $input : array();
+
+		return array(
+			'enabled' => !empty($input['enabled']) ? 1 : 0,
+			'api_key' => sanitize_text_field($input['api_key'] ?? $defaults['api_key']),
+			'model' => sanitize_text_field($input['model'] ?? $defaults['model']),
+		);
+	}
+
 	private function should_enqueue() {
 		if (is_admin()) {
 			return false;
@@ -341,6 +449,16 @@ final class Pixact_Cost_Calculator_Plugin {
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array($this, 'handle_lead_submission'),
+				'permission_callback' => '__return_true',
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			self::REST_MICROCOPY_ROUTE,
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array($this, 'handle_microcopy_generation'),
 				'permission_callback' => '__return_true',
 			)
 		);
@@ -440,6 +558,92 @@ final class Pixact_Cost_Calculator_Plugin {
 		return new WP_REST_Response(array('message' => 'Lead captured', 'leadId' => $post_id), 201);
 	}
 
+	public function handle_microcopy_generation(WP_REST_Request $request) {
+		$nonce = $request->get_header('x_wp_nonce');
+		if (!$nonce) {
+			$nonce = $request->get_param('_wpnonce');
+		}
+
+		if (!$nonce || !wp_verify_nonce($nonce, 'wp_rest')) {
+			return new WP_REST_Response(array('message' => 'Invalid nonce'), 403);
+		}
+
+		$params = $request->get_json_params();
+		if (!is_array($params)) {
+			return new WP_REST_Response(array('message' => 'Invalid payload'), 400);
+		}
+
+		$step = sanitize_key($params['step'] ?? '');
+		$answers = isset($params['answers']) && is_array($params['answers'])
+			? $this->sanitize_answers_recursive($params['answers'])
+			: array();
+		$calculator_type = sanitize_text_field($params['calculator_type'] ?? 'app-web-cost-calculator');
+
+		if (empty($step)) {
+			return new WP_REST_Response(array('message' => 'Missing step'), 422);
+		}
+
+		$cache_key = 'pixact_mc_' . md5(wp_json_encode(array($step, $answers, $calculator_type)));
+		$cached = get_transient($cache_key);
+		if (is_array($cached) && isset($cached['helper_text'], $cached['explanation'], $cached['recommendation'])) {
+			return new WP_REST_Response($cached, 200);
+		}
+		$rate_key = 'pixact_mcr_' . md5($cache_key);
+		if (get_transient($rate_key)) {
+			$fallback = $this->get_default_microcopy_for_step($step);
+			return new WP_REST_Response($fallback, 200);
+		}
+		set_transient($rate_key, 1, 2);
+
+		$ai_settings = $this->get_ai_settings();
+		if (empty($ai_settings['enabled']) || empty($ai_settings['api_key'])) {
+			$fallback = $this->get_default_microcopy_for_step($step);
+			set_transient($cache_key, $fallback, 6 * HOUR_IN_SECONDS);
+			return new WP_REST_Response($fallback, 200);
+		}
+
+		$prompt = $this->build_microcopy_prompt($step, $answers, $calculator_type);
+		$ai_response = wp_remote_post(
+			'https://api.openai.com/v1/chat/completions',
+			array(
+				'timeout' => 20,
+				'headers' => array(
+					'Content-Type'  => 'application/json',
+					'Authorization' => 'Bearer ' . $ai_settings['api_key'],
+				),
+				'body' => wp_json_encode(
+					array(
+						'model' => $ai_settings['model'],
+						'temperature' => 0.4,
+						'max_tokens' => 180,
+						'messages' => array(
+							array('role' => 'system', 'content' => 'You are a senior product consultant. Return strict JSON only.'),
+							array('role' => 'user', 'content' => $prompt),
+						),
+					)
+				),
+			)
+		);
+
+		if (is_wp_error($ai_response) || wp_remote_retrieve_response_code($ai_response) >= 400) {
+			$this->log_debug('Microcopy API request failed.');
+			$fallback = $this->get_default_microcopy_for_step($step);
+			set_transient($cache_key, $fallback, 6 * HOUR_IN_SECONDS);
+			return new WP_REST_Response($fallback, 200);
+		}
+
+		$body = json_decode(wp_remote_retrieve_body($ai_response), true);
+		$content = $body['choices'][0]['message']['content'] ?? '';
+		$parsed = $this->parse_microcopy_content($content);
+		if (empty($parsed['helper_text']) || empty($parsed['explanation']) || empty($parsed['recommendation'])) {
+			$this->log_debug('Microcopy API parse failed, using fallback.');
+			$parsed = $this->get_default_microcopy_for_step($step);
+		}
+
+		set_transient($cache_key, $parsed, 6 * HOUR_IN_SECONDS);
+		return new WP_REST_Response($parsed, 200);
+	}
+
 	private function send_lead_email($lead_data) {
 		$to = get_option('admin_email');
 		$subject = 'New Pixact Calculator Lead';
@@ -456,6 +660,72 @@ final class Pixact_Cost_Calculator_Plugin {
 		);
 
 		wp_mail($to, $subject, implode("\n", $lines));
+	}
+
+	private function sanitize_answers_recursive($value) {
+		if (is_array($value)) {
+			$clean = array();
+			foreach ($value as $key => $item) {
+				$clean[sanitize_key((string) $key)] = $this->sanitize_answers_recursive($item);
+			}
+			return $clean;
+		}
+
+		if (is_string($value)) {
+			return sanitize_text_field($value);
+		}
+
+		if (is_numeric($value)) {
+			return $value + 0;
+		}
+
+		return '';
+	}
+
+	private function build_microcopy_prompt($step, $answers, $calculator_type) {
+		return "You are a senior product consultant at a high-end software development company.\n\nYour job is to guide potential clients through estimating their app or website project.\n\nYou must generate three outputs:\n\n1. helper_text (max 18 words)\n- Short, guiding sentence\n- Helps user understand what to choose\n\n2. explanation (max 50 words)\n- Clear explanation of the concept\n- No jargon\n- Simple but authoritative\n\n3. recommendation (max 2 lines)\n- Insight based on user selections\n- Suggest smarter approach (MVP, phased build, cost control, etc.)\n\nTone rules:\n- Confident but not pushy\n- Professional and human\n- No buzzwords\n- No fluff\n- No emojis\n- No exclamation marks\n- No marketing hype\n- Sound like an experienced consultant, not a salesperson\n\nImportant:\n- Be consistent across steps\n- Do not contradict previous guidance\n- Do not mention pricing unless necessary\n- Do not over-explain\n\nContext:\n\nCalculator Type: " . $calculator_type . "\nCurrent Step: " . $step . "\nUser Selections: " . wp_json_encode($answers) . "\n\nOutput strictly in JSON format:\n\n{\n  \"helper_text\": \"\",\n  \"explanation\": \"\",\n  \"recommendation\": \"\"\n}";
+	}
+
+	private function log_debug($message) {
+		if (defined('WP_DEBUG') && WP_DEBUG) {
+			error_log('[Pixact Calculator] ' . sanitize_text_field($message));
+		}
+	}
+
+	private function parse_microcopy_content($content) {
+		$content = trim((string) $content);
+		$content = preg_replace('/^```(?:json)?\s*/', '', $content);
+		$content = preg_replace('/\s*```$/', '', (string) $content);
+		$decoded = json_decode($content, true);
+
+		if (!is_array($decoded)) {
+			return array();
+		}
+
+		return array(
+			'helper_text' => sanitize_text_field($decoded['helper_text'] ?? ''),
+			'explanation' => sanitize_text_field($decoded['explanation'] ?? ''),
+			'recommendation' => sanitize_text_field($decoded['recommendation'] ?? ''),
+		);
+	}
+
+	private function get_default_microcopy_for_step($step) {
+		$settings = $this->get_settings();
+		$ui = $settings['ui'] ?? array();
+		$step_key_map = array(
+			'step1' => array('helper' => 'step1Microcopy', 'explanation' => 'step1Explanation'),
+			'step2' => array('helper' => 'step2Microcopy', 'explanation' => 'step2Explanation'),
+			'step3' => array('helper' => 'step3Microcopy', 'explanation' => 'step3Explanation'),
+			'step4' => array('helper' => 'step4Microcopy', 'explanation' => 'step4Explanation'),
+			'step5' => array('helper' => 'step5Subtitle', 'explanation' => 'step5Explanation'),
+		);
+		$keys = $step_key_map[$step] ?? $step_key_map['step1'];
+
+		return array(
+			'helper_text' => sanitize_text_field($ui[$keys['helper']] ?? 'We tailor each estimate around your selected priorities.'),
+			'explanation' => sanitize_text_field($ui[$keys['explanation']] ?? 'This section helps you understand scope and delivery trade-offs based on your selections.'),
+			'recommendation' => sanitize_text_field($ui['resultRecommendation'] ?? 'Start with a focused MVP to validate the core product quickly.'),
+		);
 	}
 
 	public function set_lead_columns($columns) {

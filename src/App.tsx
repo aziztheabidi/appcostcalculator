@@ -1,11 +1,13 @@
-import { lazy, Suspense, useMemo, useState, type ReactNode } from "react"
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react"
 import { CalculatorLayout } from "./components/CalculatorLayout"
 import { ConversationStep } from "./components/ConversationStep"
 import { OptionCard } from "./components/OptionCard"
 import { ProgressBar } from "./components/ProgressBar"
 import { loadRuntimeConfig } from "./config/runtime"
 import { useCalculator } from "./hooks/useCalculator"
+import { fetchMicrocopy } from "./lib/aiMicrocopy"
 import { formatCurrency } from "./lib/pricingEngine"
+import { buildGuidanceInsights } from "./lib/recommendationEngine"
 import { submitCalculatorLead } from "./lib/wordpressApi"
 
 const totalSteps = 5
@@ -62,6 +64,8 @@ function App() {
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; phone?: string }>({})
+  const [aiMicrocopy, setAiMicrocopy] = useState<Record<string, { helper: string; explanation: string; recommendation: string }>>({})
+  const [microcopyLoadingByStep, setMicrocopyLoadingByStep] = useState<Record<string, boolean>>({})
 
   const canContinue = (
     (renderedStep === 1 && Boolean(formState.projectType)) ||
@@ -145,7 +149,20 @@ function App() {
   const modeLabel = runtime.mode === "wordpress" ? "WordPress mode" : "Mock mode"
   const timelineLabel = formState.timeline ?? "standard"
   const complexityLabel = formState.complexity ?? "basic"
-  const projectTypeLabel = formState.projectType ?? "website"
+  const guidanceInsights = buildGuidanceInsights({
+    complexity: formState.complexity,
+    timeline: formState.timeline,
+    selectedAddons: formState.addons,
+    addonOptions: calculatorConfig.addonOptions,
+    totalEstimate: estimate.total,
+  })
+  const activeStepKey = `step${renderedStep}`
+  const activeAi = aiMicrocopy[activeStepKey]
+  const activeMicrocopyLoading = Boolean(microcopyLoadingByStep[activeStepKey])
+  const activeRecommendation = activeAi?.recommendation ?? calculatorConfig.ui.resultRecommendation
+  const mergedInsights = activeAi?.recommendation
+    ? [activeAi.recommendation, ...guidanceInsights].slice(0, 3)
+    : guidanceInsights
   const mobileCtaLabel: "Continue" | "See Estimate" = renderedStep < 5 ? "Continue" : "See Estimate"
   const mobileCtaDisabled = renderedStep < 5 ? (!canContinue || isStepTransitioning) : (submitting || isSubmitted)
   const handleMobileCta = () => {
@@ -155,6 +172,49 @@ function App() {
     }
     handleSubmitLead()
   }
+
+  const meaningfulAnswers = useMemo(() => {
+    if (renderedStep === 1) {
+      return { projectType: formState.projectType }
+    }
+    if (renderedStep === 2) {
+      return { projectType: formState.projectType, complexity: formState.complexity }
+    }
+    if (renderedStep === 3) {
+      return {
+        projectType: formState.projectType,
+        complexity: formState.complexity,
+        timeline: formState.timeline,
+      }
+    }
+    return {
+      projectType: formState.projectType,
+      complexity: formState.complexity,
+      timeline: formState.timeline,
+      addons: [...formState.addons].sort(),
+    }
+  }, [renderedStep, formState.projectType, formState.complexity, formState.timeline, formState.addons])
+
+  useEffect(() => {
+    const stepKey = `step${renderedStep}`
+    const timer = window.setTimeout(async () => {
+      setMicrocopyLoadingByStep((prev) => ({ ...prev, [stepKey]: true }))
+      const data = await fetchMicrocopy(stepKey, meaningfulAnswers, "app-web-cost-calculator")
+      if (data) {
+        setAiMicrocopy((prev) => ({
+          ...prev,
+          [stepKey]: {
+            helper: data.helper_text,
+            explanation: data.explanation,
+            recommendation: data.recommendation,
+          },
+        }))
+      }
+      setMicrocopyLoadingByStep((prev) => ({ ...prev, [stepKey]: false }))
+    }, 300)
+
+    return () => window.clearTimeout(timer)
+  }, [renderedStep, meaningfulAnswers])
 
   const renderSelectableCards = <T extends string,>(
     options: Array<{ value: T; label: string; description: string; badge?: string }>,
@@ -209,9 +269,10 @@ function App() {
         <ConversationStep
           title={calculatorConfig.ui.step1Title}
           description={calculatorConfig.ui.step1Subtitle}
-          helpText={calculatorConfig.ui.step1Explanation}
+          helpText={activeAi?.explanation ?? calculatorConfig.ui.step1Explanation}
           questionLabel="Choose project type"
-          microcopy="Tip: pick the core product first; you can refine scope in the next steps."
+          microcopy={activeAi?.helper ?? calculatorConfig.ui.step1Microcopy}
+          microcopyLoading={activeMicrocopyLoading}
           onNext={nextStep}
           nextDisabled={!canContinue || isStepTransitioning}
         >
@@ -232,9 +293,10 @@ function App() {
         <ConversationStep
           title={calculatorConfig.ui.step2Title}
           description={calculatorConfig.ui.step2Subtitle}
-          helpText={calculatorConfig.ui.step2Explanation}
+          helpText={activeAi?.explanation ?? calculatorConfig.ui.step2Explanation}
           questionLabel="Choose complexity level"
-          microcopy="Complexity has the strongest impact on development effort."
+          microcopy={activeAi?.helper ?? calculatorConfig.ui.step2Microcopy}
+          microcopyLoading={activeMicrocopyLoading}
           onBack={previousStep}
           onNext={nextStep}
           nextDisabled={!canContinue || isStepTransitioning}
@@ -252,9 +314,10 @@ function App() {
         <ConversationStep
           title={calculatorConfig.ui.step3Title}
           description={calculatorConfig.ui.step3Subtitle}
-          helpText={calculatorConfig.ui.step3Explanation}
+          helpText={activeAi?.explanation ?? calculatorConfig.ui.step3Explanation}
           questionLabel="Choose delivery timeline"
-          microcopy="Faster delivery typically requires more parallel execution."
+          microcopy={activeAi?.helper ?? calculatorConfig.ui.step3Microcopy}
+          microcopyLoading={activeMicrocopyLoading}
           onBack={previousStep}
           onNext={nextStep}
           nextDisabled={!canContinue || isStepTransitioning}
@@ -272,9 +335,10 @@ function App() {
         <ConversationStep
           title={calculatorConfig.ui.step4Title}
           description={calculatorConfig.ui.step4Subtitle}
-          helpText={calculatorConfig.ui.step4Explanation}
+          helpText={activeAi?.explanation ?? calculatorConfig.ui.step4Explanation}
           questionLabel="Choose add-ons"
-          microcopy="Optional add-ons help shape a more accurate estimate."
+          microcopy={activeAi?.helper ?? calculatorConfig.ui.step4Microcopy}
+          microcopyLoading={activeMicrocopyLoading}
           onBack={previousStep}
           onNext={nextStep}
           nextDisabled={isStepTransitioning}
@@ -288,7 +352,7 @@ function App() {
         <ConversationStep
           title={isSubmitted ? "Your estimate is ready" : calculatorConfig.ui.step5Title}
           description={calculatorConfig.ui.step5Subtitle}
-          helpText={calculatorConfig.ui.step5Explanation}
+          helpText={activeAi?.explanation ?? calculatorConfig.ui.step5Explanation}
           questionLabel="Share your contact details"
           onBack={previousStep}
           onNext={handleSubmitLead}
@@ -303,9 +367,39 @@ function App() {
               phoneError={fieldErrors.phone}
             />
           </Suspense>
+          {!isSubmitted ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              {calculatorConfig.ui.leadFramingMessage}
+            </div>
+          ) : null}
           {isSubmitted ? (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-              Thanks! Submission successful. Your current estimate range is {formatCurrency(Math.round(estimate.total * 0.9))} - {formatCurrency(Math.round(estimate.total * 1.1))}.
+            <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+              <p className="text-base font-semibold">
+                Estimated range: {formatCurrency(Math.round(estimate.total * 0.9))} - {formatCurrency(Math.round(estimate.total * 1.1))}
+              </p>
+              <p>Timeline: {timelineLabel}</p>
+              <p>Complexity: {complexityLabel}</p>
+              <div className="rounded-xl border border-emerald-200 bg-white/70 p-3 text-sm">
+                <p className="font-semibold">Recommendation</p>
+                <p className="mt-1">{activeRecommendation}</p>
+              </div>
+              <ul className="space-y-1 text-sm">
+                {mergedInsights.map((insight) => (
+                  <li key={insight}>- {insight}</li>
+                ))}
+              </ul>
+              <p className="text-xs text-emerald-800/80">{calculatorConfig.ui.resultTrustLine}</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <button type="button" className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold">
+                  {calculatorConfig.ui.ctaConsultation}
+                </button>
+                <button type="button" className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold">
+                  {calculatorConfig.ui.ctaPrototype}
+                </button>
+                <button type="button" className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold">
+                  {calculatorConfig.ui.ctaDetailedEstimate}
+                </button>
+              </div>
             </div>
           ) : null}
           {error ? (
@@ -333,8 +427,7 @@ function App() {
       estimate={estimate}
       timeline={timelineLabel}
       complexity={complexityLabel}
-      projectType={projectTypeLabel}
-      addonsCount={formState.addons.length}
+      insights={mergedInsights}
       mobileCtaLabel={mobileCtaLabel}
       onMobileCtaClick={handleMobileCta}
       mobileCtaDisabled={mobileCtaDisabled}

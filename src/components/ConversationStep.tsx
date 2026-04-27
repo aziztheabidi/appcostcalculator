@@ -12,6 +12,7 @@ interface ConversationStepProps {
   nextDisabled?: boolean
   nextLabel?: string
   microcopy?: string
+  microcopyLoading?: boolean
 }
 
 export const ConversationStep = ({
@@ -25,6 +26,7 @@ export const ConversationStep = ({
   nextDisabled,
   nextLabel = "Next",
   microcopy,
+  microcopyLoading = false,
 }: ConversationStepProps) => {
   return (
     <section className="ds-card p-6 sm:p-8">
@@ -39,7 +41,13 @@ export const ConversationStep = ({
         <div className="space-y-3">
           <p className="text-sm font-semibold text-slate-700">{questionLabel}</p>
           {children}
-          {microcopy ? <p className="text-xs text-slate-500">{microcopy}</p> : null}
+          <div className="min-h-5">
+            {microcopyLoading ? (
+              <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200/80" aria-hidden="true" />
+            ) : microcopy ? (
+              <p className="text-xs text-slate-500 transition-opacity duration-200">{microcopy}</p>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex items-center justify-between pt-2">

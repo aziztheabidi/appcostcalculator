@@ -5,6 +5,7 @@ export interface WordPressCalculatorConfig {
   nonce: string
   siteUrl: string
   calculatorConfig: CalculatorPricingConfig
+  aiEnabled?: boolean
 }
 
 declare global {

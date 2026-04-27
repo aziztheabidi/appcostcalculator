@@ -5,8 +5,7 @@ interface StickyEstimatePanelProps {
   estimate: EstimateBreakdown
   timeline: string
   complexity: string
-  projectType: string
-  addonsCount: number
+  insights: string[]
 }
 
 const getTimelineRange = (timeline: string): string => {
@@ -24,55 +23,16 @@ const getComplexityBadge = (complexity: string, total: number): string => {
   return "Basic"
 }
 
-const getInsights = (params: {
-  complexityBadge: string
-  total: number
-  projectType: string
-  timeline: string
-  addonsCount: number
-}): string[] => {
-  const { complexityBadge, total, projectType, timeline, addonsCount } = params
-  const insights: string[] = []
-
-  insights.push(`Your feature selection suggests a ${complexityBadge.toLowerCase()} complexity build.`)
-
-  if (total > 30000) {
-    insights.push("A phased MVP approach may help reduce initial cost.")
-  } else {
-    insights.push("Your current scope is in a lean range for an initial launch.")
-  }
-
-  if (projectType === "app") {
-    insights.push("Cross-platform development can speed up your launch.")
-  } else if (timeline === "urgent") {
-    insights.push("Urgent timelines benefit from strict scope control in early milestones.")
-  } else if (addonsCount > 0) {
-    insights.push("Selected add-ons increase value while keeping scope transparent.")
-  } else {
-    insights.push("Adding integrations later can keep version one simpler and faster.")
-  }
-
-  return insights
-}
-
 export const StickyEstimatePanel = ({
   estimate,
   timeline,
   complexity,
-  projectType,
-  addonsCount,
+  insights,
 }: StickyEstimatePanelProps) => {
   const min = Math.round(estimate.total * 0.9)
   const max = Math.round(estimate.total * 1.1)
   const complexityBadge = getComplexityBadge(complexity, estimate.total)
   const timelineRange = getTimelineRange(timeline)
-  const insights = getInsights({
-    complexityBadge,
-    total: estimate.total,
-    projectType,
-    timeline,
-    addonsCount,
-  })
 
   return (
     <aside className="ds-card sticky top-4 hidden p-6 lg:block">

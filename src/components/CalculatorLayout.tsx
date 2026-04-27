@@ -8,8 +8,7 @@ interface CalculatorLayoutProps {
   estimate: EstimateBreakdown
   timeline: string
   complexity: string
-  projectType: string
-  addonsCount: number
+  insights: string[]
   mobileCtaLabel: "Continue" | "See Estimate"
   onMobileCtaClick: () => void
   mobileCtaDisabled?: boolean
@@ -20,8 +19,7 @@ export const CalculatorLayout = ({
   estimate,
   timeline,
   complexity,
-  projectType,
-  addonsCount,
+  insights,
   mobileCtaLabel,
   onMobileCtaClick,
   mobileCtaDisabled = false,
@@ -35,8 +33,7 @@ export const CalculatorLayout = ({
             estimate={estimate}
             timeline={timeline}
             complexity={complexity}
-            projectType={projectType}
-            addonsCount={addonsCount}
+            insights={insights}
           />
         </div>
       </div>
